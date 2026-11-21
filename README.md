@@ -32,3 +32,7 @@ zerokull-ctl serve 127.0.0.1:9109
 
 ## Multi-Port XDP Mesh (1..1024 Interfaces)
 - By default (`./build/zerokull-daemon` or `all`), the daemon attaches the eBPF/XDP guard across **all active physical interfaces simultaneously** (up to 1024 ports) and automatically binds newly hot-plugged NICs every 100ms while sharing a unified LRU blacklist.
+
+## Hardening & Anti-Eviction Guarantees
+- **Flow-Slot Anti-Eviction Lock:** Warmed flow state slots (`pkt_count >= 8`) are protected against single-packet hash-collision slot eviction (`src/engine.c`).
+- **L3/L4 Anomaly & Scan Filtering:** Immediate deterministic drop of IPv4 fragments (`MF` / `offset > 0`), non-standard `IHL != 5`, `TTL 0/65/129`, and anomalous TCP flag combinations (`Null`, `FIN-only`, `SYN+FIN`, `XMAS`).
