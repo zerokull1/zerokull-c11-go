@@ -1,3 +1,30 @@
 # ZEROKULL-C11-GO
 
-Детерминированный движок периметровой защиты и инспекции трафика (L3–L7) для Linux, сочетающий eBPF/XDP в ядре, ISO C11 (`libbpf`) в контуре обработки и Go Control-Plane (`zerokull-ctl`) для мониторинга и метрик. Полную документацию, схему конвейера, характеристики (84.82 Mpps), структуру репозитория и инструкции по быстрому старту смотрите в файле репозитория.
+**ZEROKULL-C11-GO** — сверхкомпактный детерминированный движок периметровой защиты и инспекции трафика (L3–L7) для Linux на базе eBPF/XDP, ISO C11 и Go.
+
+## Архитектура и характеристики
+
+* **1. Kernel Space (eBPF XDP):** Блокировки по черному списку (LRU Hash), белый список и Zero-Copy Ringbuf (256 KB).
+* **2. Data-Plane (ISO C11):** Инспекция L2–L7 (TLS, HTTP/2, SMB1), stateful-таблица потоков и производительность **84.82 Mpps**.
+* **3. Control-Plane (Go 1.22+):** Статическая CLI-утилита `zerokull-ctl` с поддержкой Prometheus `/metrics` и JSON API.
+
+## Быстрый старт
+
+### Зависимости (Ubuntu / Debian / Arch)
+
+* **Arch:** `sudo pacman -S gcc clang llvm libbpf bpftool go`
+* **Ubuntu/Debian:** `sudo apt install gcc clang llvm libbpf-dev libelf-dev zlib1g-dev bpftool golang-go`
+
+### Сборка и запуск
+
+```bash
+git clone https://github.com && cd zerokull-c11-go
+make && make test && go test -v ./...
+sudo make install && sudo zerokull-daemon eth0
+zerokull-ctl status
+zerokull-ctl serve 127.0.0.1:9109
+```
+
+## Лицензия
+
+GNU General Public License v3.0 (`LICENSE`).
