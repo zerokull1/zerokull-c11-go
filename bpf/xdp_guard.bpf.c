@@ -8,7 +8,7 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
-#define ZK_MAX_PKT_LEN 1536
+#define ZK_MAX_PKT_LEN 1536U
 
 struct zk_vlan_hdr { __be16 h_vlan_TCI; __be16 h_vlan_encapsulated_proto; };
 struct zk_pkt_event { __u32 wire_len; __u32 cap_len; __u8 data[ZK_MAX_PKT_LEN]; };
@@ -59,8 +59,11 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
     __u64 wire_len = (__u64)((long)data_end - (long)data);
     if (wire_len == 0) return XDP_PASS;
     __u32 cap_len = wire_len > ZK_MAX_PKT_LEN ? ZK_MAX_PKT_LEN : (__u32)wire_len;
+    cap_len &= 0x7FFU;
+    if (cap_len == 0 || cap_len > ZK_MAX_PKT_LEN) return XDP_PASS;
 
-    struct zk_pkt_event *ev = bpf_ringbuf_reserve(&ringbuf_map, sizeof(*ev), 0);
+    __u64 rec_sz = __builtin_offsetof(struct zk_pkt_event, data) + (__u64)cap_len;
+    struct zk_pkt_event *ev = bpf_ringbuf_reserve(&ringbuf_map, rec_sz, 0);
     if (!ev) { if (st) st->ringbuf_drops++; return XDP_PASS; }
     ev->wire_len = (__u32)wire_len;
     ev->cap_len  = cap_len;

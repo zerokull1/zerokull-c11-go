@@ -42,9 +42,14 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
         if (!(*(l7 + 0) == 0xFE && *(l7 + 1) == 'S' && *(l7 + 2) == 'M' && *(l7 + 3) == 'B') && *(l7 + 0) != 0x00) return ZK_VERDICT_DROP;
     }
     if (proto == 6 && (dport == 102 || dport == 502 || dport == 2404) && l7_len < 6) return ZK_VERDICT_DROP;
-    if (proto == 6 && dport == 443 && l7_len >= 6 && *(l7 + 0) == 0x16) {
+    if (proto == 6 && l7_len >= 5 && *(l7 + 0) == 0x16) {
         uint16_t ver = rd_be16(l7 + 1);
-        if (ver < 0x0301 || ver > 0x0304) return ZK_VERDICT_DROP;
+        uint16_t rec_len = rd_be16(l7 + 3);
+        if (ver >= 0x0300 && ver <= 0x0304) {
+            if (ver < 0x0301 || rec_len < 40U) return ZK_VERDICT_DROP;
+        } else if (dport == 443 || dport == 8443 || dport == 853 || dport == 465 || dport == 993) {
+            return ZK_VERDICT_DROP;
+        }
     }
     if (proto == 6 && (dport == 80 || dport == 8080) && l7_len >= 13 && *(l7 + 3) == 0x08) {
         uint32_t f_len = (rd_be32(l7) >> 8) & 0x00FFFFFFU;
@@ -66,9 +71,17 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
     if (fid == 0) fid = 1U;
     struct zk_flow_slot *slot = &ctx->flows[fid & ZK_FLOW_MASK];
 
+    if ((tcp_flags & 0x05U) != 0) {
+        if (slot->flow_hash == fid) {
+            memset(slot, 0, sizeof(*slot));
+            slot->ema_popcnt = 64;
+        }
+        return ZK_VERDICT_PASS;
+    }
+
     bool is_syn = (tcp_flags & 0x02U) != 0;
     bool is_ack = (tcp_flags & 0x10U) != 0;
-    bool is_tls = (l7 && l7_len >= 1 && *(l7 + 0) == 0x16);
+    bool is_tls = (l7 && l7_len >= 5 && *(l7 + 0) == 0x16);
     uint16_t step_flags = (is_syn ? 1U : 0U) | (is_tls ? 2U : 0U) | ((l7_len >= 16) ? 4U : 0U) | ((!is_syn && is_ack && l7_len == 0) ? 8U : 0U);
 
     if (slot->flow_hash != fid || (is_syn && !is_ack)) {

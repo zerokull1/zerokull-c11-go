@@ -34,12 +34,17 @@ static void on_signal(int sig) { (void)sig; g_stop = 1; }
 
 static void sync_telemetry(struct app_ctx *app) {
     if (!app->shm) return;
-    uint64_t kern_drops = 0;
+    uint64_t kern_drops = 0, kern_rx = 0;
     uint32_t zero = 0;
     if (app->cpu_stats && bpf_map_lookup_elem(app->stats_fd, &zero, app->cpu_stats) == 0) {
-        for (unsigned int i = 0; i < app->ncpus; i++) kern_drops += app->cpu_stats[i].xdp_drops;
+        for (unsigned int i = 0; i < app->ncpus; i++) {
+            kern_rx    += app->cpu_stats[i].rx_packets;
+            kern_drops += app->cpu_stats[i].xdp_drops;
+        }
     }
-    app->shm->inspected = app->engine.total_inspected + kern_drops;
+    uint64_t total_rx = app->engine.total_inspected + kern_drops;
+    if (kern_rx > total_rx) total_rx = kern_rx;
+    app->shm->inspected = total_rx;
     app->shm->drops     = app->engine.total_drops + kern_drops;
     app->shm->bans      = app->engine.total_bans;
 }
@@ -93,9 +98,12 @@ int main(int argc, char **argv) {
             void *p = mmap(NULL, sizeof(*shm), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
             if (p != MAP_FAILED) {
                 shm = (volatile struct zk_shm_telemetry *)p;
-                shm->magic = ZK_SHM_MAGIC; shm->version = 1;
-                shm->pid = (uint32_t)getpid(); shm->start_ts = (uint64_t)time(NULL);
+                shm->version = 1;
+                shm->pid = (uint32_t)getpid();
+                shm->start_ts = (uint64_t)time(NULL);
                 shm->inspected = 0; shm->drops = 0; shm->bans = 0;
+                __sync_synchronize();
+                shm->magic = ZK_SHM_MAGIC;
             }
         }
         if (!shm) { close(shm_fd); shm_fd = -1; shm_unlink(ZK_SHM_NAME); }
@@ -116,7 +124,7 @@ int main(int argc, char **argv) {
     struct ring_buffer *rb = ring_buffer__new(bpf_map__fd(skel->maps.ringbuf_map), handle_event, &app, NULL);
     if (!rb) {
         free(app.cpu_stats);
-        if (shm) { shm->pid = 0; munmap((void *)shm, sizeof(*shm)); }
+        if (shm) { shm->pid = 0; munmap((void *)shm, sizeof(*shm)); shm_unlink(ZK_SHM_NAME); }
         if (shm_fd >= 0) close(shm_fd);
         bpf_link__destroy(link);
         xdp_guard_bpf__destroy(skel);
@@ -139,7 +147,7 @@ int main(int argc, char **argv) {
 
     ring_buffer__free(rb);
     free(app.cpu_stats);
-    if (shm) { shm->pid = 0; munmap((void *)shm, sizeof(*shm)); }
+    if (shm) { shm->pid = 0; munmap((void *)shm, sizeof(*shm)); shm_unlink(ZK_SHM_NAME); }
     if (shm_fd >= 0) close(shm_fd);
     bpf_link__destroy(link);
     xdp_guard_bpf__destroy(skel);

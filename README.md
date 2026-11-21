@@ -1,6 +1,6 @@
 # ZEROKULL
 
-[![CI](https://github.com)](https://github.com)
+[![CI](https://github.com.git)](https://github.com.git)
 ![Standard](https://shields.io)
 ![Kernel](https://shields.io)
 ![License](https://shields.io)
@@ -58,7 +58,8 @@ zerokull/
 │   └── zerokull.h            # Структуры событий, слотов потоков и API инспектора
 ├── src/
 │   ├── engine.c              # Детерминированные L3–L7 инспекторы и Stateful FSM / Entropy Drift
-│   └── daemon.c              # Загрузчик libbpf skeleton и цикл ring_buffer__poll()
+│   ├── daemon.c
+│   └── stat.c              # Загрузчик libbpf skeleton и цикл ring_buffer__poll()
 ├── tests/
 │   └── test_suite.c          # Модульные и поведенческие тесты (0 FP, TTL, SMB1, FSM, Covert Tunnel)
 ├── .github/workflows/ci.yml  # Автоматическая сборка и прогон тестов в GitHub Actions
@@ -78,7 +79,7 @@ zerokull/
 ### Сборка и прогон автотестов
 
 ```bash
-git clone https://github.com/zerokull.git
+git clone https://github.com.git/zerokull.git
 cd zerokull
 make
 make test
