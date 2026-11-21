@@ -10,6 +10,7 @@
 
 #define ZK_MAX_PKT_LEN 1536
 
+struct zk_vlan_hdr { __be16 h_vlan_TCI; __be16 h_vlan_encapsulated_proto; };
 struct zk_pkt_event { __u32 wire_len; __u32 cap_len; __u8 data[ZK_MAX_PKT_LEN]; };
 struct zk_xdp_stats { __u64 rx_packets; __u64 xdp_drops; __u64 ringbuf_sent; __u64 ringbuf_drops; };
 
@@ -28,19 +29,29 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
     if (st) st->rx_packets++;
 
     struct ethhdr *eth = data;
-    if ((void *)(eth + 1) > data_end || eth->h_proto != bpf_htons(ETH_P_IP)) return XDP_PASS;
+    if ((void *)(eth + 1) > data_end) return XDP_PASS;
 
-    struct iphdr *iph = (void *)(eth + 1);
+    __be16 h_proto = eth->h_proto;
+    void *nh = (void *)(eth + 1);
+    if (h_proto == bpf_htons(ETH_P_8021Q) || h_proto == bpf_htons(ETH_P_8021AD)) {
+        struct zk_vlan_hdr *vh = nh;
+        if ((void *)(vh + 1) > data_end) return XDP_PASS;
+        h_proto = vh->h_vlan_encapsulated_proto;
+        nh = (void *)(vh + 1);
+    }
+    if (h_proto != bpf_htons(ETH_P_IP)) return XDP_PASS;
+
+    struct iphdr *iph = nh;
     if ((void *)(iph + 1) > data_end) return XDP_PASS;
+
+    if (iph->version != 4 || iph->ihl != 5 || iph->ttl == 0 || iph->ttl == 65 || iph->ttl == 129 || (iph->frag_off & bpf_htons(0x3FFF)) != 0) {
+        if (st) st->xdp_drops++;
+        return XDP_DROP;
+    }
 
     __u32 src_ip = iph->saddr;
     if (bpf_map_lookup_elem(&blacklist_map, &src_ip)) { if (st) st->xdp_drops++; return XDP_DROP; }
     if (bpf_map_lookup_elem(&whitelist_map, &src_ip)) return XDP_PASS;
-
-    if (iph->ihl != 5 || iph->ttl == 0 || iph->ttl == 65 || iph->ttl == 129 || (iph->frag_off & bpf_htons(0x3FFF)) != 0) {
-        if (st) st->xdp_drops++;
-        return XDP_DROP;
-    }
 
     __u64 wire_len = (__u64)((long)data_end - (long)data);
     if (wire_len == 0) return XDP_PASS;

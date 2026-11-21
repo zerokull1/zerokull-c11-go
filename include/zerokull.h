@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdalign.h>
 
 #define ZK_MAX_PKT_LEN 1536
 #define ZK_FLOW_SLOTS  256
@@ -38,8 +39,8 @@ struct zk_flow_slot {
 };
 
 struct zk_engine_ctx {
-    struct zk_flow_slot flows[ZK_FLOW_SLOTS];
-    uint64_t total_inspected;
+    alignas(64) struct zk_flow_slot flows[ZK_FLOW_SLOTS];
+    alignas(64) uint64_t total_inspected;
     uint64_t total_drops;
     uint64_t total_bans;
 };
@@ -51,7 +52,7 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
 #define ZK_SHM_MAGIC 0x5A45524F4B554C4CULL
 
 struct zk_shm_telemetry {
-    uint64_t magic;
+    alignas(64) uint64_t magic;
     uint32_t version;
     uint32_t pid;
     uint64_t start_ts;
