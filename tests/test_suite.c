@@ -59,6 +59,9 @@ int main(void) {
     }
     assert(banned);
 
+        const uint8_t *h2_wu = (const uint8_t *)"\x00\x00\x04\x08\x00\x00\x00\x00\x00\x40\x00\x00\x01";
+    assert(zk_inspect_packet(&ctx, pkt, build_tcp(pkt, 0x0606060A, 46000, 80, 64, 0x18, h2_wu, 13), &sip) == ZK_VERDICT_BAN);
+
     printf("[TEST PASS] inspected=%llu drops=%llu bans=%llu\n",
            (unsigned long long)ctx.total_inspected, (unsigned long long)ctx.total_drops, (unsigned long long)ctx.total_bans);
     free(pkt); free(web_buf); free(tun_buf);

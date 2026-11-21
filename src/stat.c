@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
         uint64_t now = (uint64_t)time(NULL), start_ts = shm->start_ts;
         uint32_t pid = shm->pid;
         uint64_t inspected = shm->inspected, drops = shm->drops, bans = shm->bans;
-        uint64_t up = (start_ts > 0 && now >= start_ts) ? (now - start_ts) : 0;
+        uint64_t up = (pid && start_ts > 0 && now >= start_ts) ? (now - start_ts) : 0;
         printf("ZEROKULL TELEMETRY | status=%s pid=%u uptime=%llus | inspected=%llu drops=%llu bans=%llu\n",
                pid ? "ACTIVE" : "STOPPED", pid, (unsigned long long)up,
                (unsigned long long)inspected, (unsigned long long)drops, (unsigned long long)bans);

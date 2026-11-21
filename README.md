@@ -78,7 +78,7 @@ zerokull/
 ### Сборка и прогон автотестов
 
 ```bash
-git clone https://github.com
+git clone https://github.comzerokull1/zerokull.git
 cd zerokull
 make
 make test

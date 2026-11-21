@@ -48,8 +48,8 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
     }
     if (proto == 6 && (dport == 80 || dport == 8080) && l7_len >= 13 && *(l7 + 3) == 0x08) {
         uint32_t f_len = (rd_be32(l7) >> 8) & 0x00FFFFFFU;
-        uint32_t win_inc = rd_be32(l7 + 9);
-        if (f_len == 4U && (win_inc == 0U || (win_inc & 0x80000000U) != 0U)) return ZK_VERDICT_DROP;
+        uint32_t win_inc = rd_be32(l7 + 9) & 0x7FFFFFFFU;
+        if (f_len == 4U && (win_inc == 0U || win_inc >= 0x40000000U)) return ZK_VERDICT_BAN;
     }
     return ZK_VERDICT_PASS;
 }
@@ -113,10 +113,10 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     if (!ctx || !pkt || len < 34) return ZK_VERDICT_PASS;
     size_t l3_off = 14;
     uint16_t eth_proto = rd_be16(pkt + 12);
-    if (eth_proto == 0x8100 || eth_proto == 0x88A8) {
-        if (len < 38) return ZK_VERDICT_PASS;
-        eth_proto = rd_be16(pkt + 16);
-        l3_off = 18;
+    for (int i = 0; i < 2 && (eth_proto == 0x8100 || eth_proto == 0x88A8); i++) {
+        if (len < l3_off + 24) return ZK_VERDICT_PASS;
+        eth_proto = rd_be16(pkt + l3_off + 2);
+        l3_off += 4;
     }
     if (eth_proto != 0x0800) return ZK_VERDICT_PASS;
 
@@ -154,6 +154,6 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     v = inspect_l7_payload(proto, dport, l7, l7_len);
     if (v == ZK_VERDICT_PASS && proto == 6) v = inspect_stateful_drift(ctx, src_ip, dst_ip, ports_word, tcp_flags, l7, l7_len);
     if (v == ZK_VERDICT_DROP) ctx->total_drops++;
-    else if (v == ZK_VERDICT_BAN) ctx->total_bans++;
+    else if (v == ZK_VERDICT_BAN) { ctx->total_drops++; ctx->total_bans++; }
     return v;
 }

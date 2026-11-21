@@ -33,11 +33,14 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
 
     __be16 h_proto = eth->h_proto;
     void *nh = (void *)(eth + 1);
-    if (h_proto == bpf_htons(ETH_P_8021Q) || h_proto == bpf_htons(ETH_P_8021AD)) {
-        struct zk_vlan_hdr *vh = nh;
-        if ((void *)(vh + 1) > data_end) return XDP_PASS;
-        h_proto = vh->h_vlan_encapsulated_proto;
-        nh = (void *)(vh + 1);
+    #pragma unroll
+    for (int i = 0; i < 2; i++) {
+        if (h_proto == bpf_htons(ETH_P_8021Q) || h_proto == bpf_htons(ETH_P_8021AD)) {
+            struct zk_vlan_hdr *vh = nh;
+            if ((void *)(vh + 1) > data_end) return XDP_PASS;
+            h_proto = vh->h_vlan_encapsulated_proto;
+            nh = (void *)(vh + 1);
+        }
     }
     if (h_proto != bpf_htons(ETH_P_IP)) return XDP_PASS;
 
