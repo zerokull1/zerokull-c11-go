@@ -57,13 +57,12 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
     if (bpf_map_lookup_elem(&whitelist_map, &src_ip)) return XDP_PASS;
 
     __u64 wire_len = (__u64)((long)data_end - (long)data);
-    if (wire_len == 0) return XDP_PASS;
+    if (wire_len < 34) return XDP_PASS;
     __u32 cap_len = wire_len > ZK_MAX_PKT_LEN ? ZK_MAX_PKT_LEN : (__u32)wire_len;
-    cap_len &= 0x7FFU;
-    if (cap_len == 0 || cap_len > ZK_MAX_PKT_LEN) return XDP_PASS;
+    asm volatile("" : "+r"(cap_len));
+    if (cap_len < 34 || cap_len > ZK_MAX_PKT_LEN) return XDP_PASS;
 
-    __u64 rec_sz = __builtin_offsetof(struct zk_pkt_event, data) + (__u64)cap_len;
-    struct zk_pkt_event *ev = bpf_ringbuf_reserve(&ringbuf_map, rec_sz, 0);
+    struct zk_pkt_event *ev = bpf_ringbuf_reserve(&ringbuf_map, sizeof(*ev), 0);
     if (!ev) { if (st) st->ringbuf_drops++; return XDP_PASS; }
     ev->wire_len = (__u32)wire_len;
     ev->cap_len  = cap_len;
