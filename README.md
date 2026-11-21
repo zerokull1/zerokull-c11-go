@@ -28,3 +28,7 @@ zerokull-ctl serve 127.0.0.1:9109
 ## Лицензия
 
 Этот проект распространяется под лицензией **GNU Affero General Public License v3.0 (AGPL-3.0)** — см. файл [`LICENSE`](LICENSE). Любое использование модифицированных версий в сетевых и облачных сервисах требует раскрытия исходного кода.
+
+
+## Multi-Port XDP Mesh (1..1024 Interfaces)
+- By default (`./build/zerokull-daemon` or `all`), the daemon attaches the eBPF/XDP guard across **all active physical interfaces simultaneously** (up to 1024 ports) and automatically binds newly hot-plugged NICs every 100ms while sharing a unified LRU blacklist.
