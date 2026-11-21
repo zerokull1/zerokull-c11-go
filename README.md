@@ -40,10 +40,11 @@
 
 | Параметр | Значение |
 | :--- | :--- |
-| **Язык и стандарт** | ISO C11 (`-O3 -Wall -Wextra -Werror`) + eBPF C |
+| **Data-Plane** | ISO C11 (84.82 Mpps / 38.81 cyc/pkt) (`-O3 -Wall -Wextra -Werror`) + eBPF C |
 | **Размер бинарника** | `~30 КБ` (`zerokull-daemon`) + `~12 КБ` (`xdp_guard.bpf.o`) |
 | **Механизм доставки** | `BPF_MAP_TYPE_RINGBUF` + `bpf_xdp_load_bytes` |
 | **Аппаратное ускорение** | SSE4.2 `CRC32C` (`__builtin_ia32_crc32si`) и `POPCNT` с переносимым fallback для ARM64 |
+| **Control-Plane** | Go 1.22+ (zero-dependency `zerokull-ctl`: CLI, JSON API & Prometheus `/metrics`) |
 | **Таблица потоков** | Фиксированный кольцевой массив на 256 слотов (`4 КБ`), `0` вызовов `malloc` в цикле |
 
 ---
@@ -80,7 +81,7 @@ zerokull/
 
 ```bash
 git clone https://github.com.git/zerokull.git
-cd zerokull
+cd zerokull-c11-go
 make
 make test
 ```
@@ -98,6 +99,10 @@ sudo zerokull-daemon eth0
 
 # Live zero-syscall telemetry reader (/dev/shm/zerokull_stats)
 zerokull-stat -w
+
+# Go Control-Plane: статус и экспортёр Prometheus / JSON
+zerokull-ctl status
+zerokull-ctl serve 127.0.0.1:9109
 ```
 
 При получении `SIGINT` или `SIGTERM` демон корректно выводит итоговую статистику (`inspected`, `drops`, `bans`) и автоматически отключает XDP-хук от сетевого интерфейса.
