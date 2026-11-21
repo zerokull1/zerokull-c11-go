@@ -4,11 +4,11 @@ jobs:
   build-and-sanitize:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y gcc clang llvm libbpf-dev libelf-dev zlib1g-dev linux-tools-common linux-tools-generic
-      - name: Build & Unit Tests
-        run: make && make test
+        run: sudo apt-get update && sudo apt-get install -y gcc clang llvm libbpf-dev libelf-dev zlib1g-dev linux-tools-common linux-tools-generic golang-go
+      - name: Build & Unit Tests (C11 + Go)
+        run: make && make test && go vet ./... && go test -v ./...
       - name: Static Analyzer & ASan + UBSan
         run: |
           gcc -O2 -std=c11 -Wall -Wextra -Werror -fanalyzer -Iinclude -Ibuild src/engine.c tests/test_suite.c -o /tmp/zk_fa && /tmp/zk_fa
