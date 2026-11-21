@@ -1,3 +1,7 @@
+// ZEROKULL (zerokull1) | Author Signature: 0x5A45524F4B554C4CULL
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0.
+
 package main
 
 import (

@@ -28,3 +28,6 @@ zerokull-ctl serve 127.0.0.1:9109
 ## Лицензия
 
 GNU General Public License v3.0 (`LICENSE`).
+
+---
+*Author Signature: `ZEROKULL (zerokull1) | 0x5A45524F4B554C4CULL`*
