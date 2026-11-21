@@ -6,8 +6,8 @@
 #include <string.h>
 
 static inline uint16_t rd_be16(const uint8_t *p) { return (uint16_t)(((uint16_t)(*(p + 0)) << 8) | *(p + 1)); }
-static inline uint32_t rd_le32(const uint8_t *p) {
-    return (uint32_t)(*(p + 0)) | ((uint32_t)(*(p + 1)) << 8) | ((uint32_t)(*(p + 2)) << 16) | ((uint32_t)(*(p + 3)) << 24);
+static inline uint32_t rd_be32(const uint8_t *p) {
+    return ((uint32_t)(*(p + 0)) << 24) | ((uint32_t)(*(p + 1)) << 16) | ((uint32_t)(*(p + 2)) << 8) | (uint32_t)(*(p + 3));
 }
 static inline uint64_t rd_le64(const uint8_t *p) { uint64_t v = 0; memcpy(&v, p, sizeof(v)); return v; }
 
@@ -46,6 +46,11 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
         uint16_t ver = rd_be16(l7 + 1);
         if (ver < 0x0301 || ver > 0x0304) return ZK_VERDICT_DROP;
     }
+    if (proto == 6 && (dport == 80 || dport == 8080 || dport == 443) && l7_len >= 13 && *(l7 + 3) == 0x08) {
+        uint32_t f_len = (rd_be32(l7) >> 8) & 0x00FFFFFFU;
+        uint32_t win_inc = rd_be32(l7 + 9);
+        if (f_len == 4U && (win_inc == 0U || (win_inc & 0x80000000U) != 0U)) return ZK_VERDICT_DROP;
+    }
     return ZK_VERDICT_PASS;
 }
 
@@ -56,20 +61,30 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
     uint32_t fid = zk_crc32c_u32(src_ip ^ dst_ip, p_canon);
     if (fid == 0) fid = 1U;
     struct zk_flow_slot *slot = &ctx->flows[fid & ZK_FLOW_MASK];
-    bool is_syn = (tcp_flags & 0x02U) != 0;
-    bool is_tls = (l7 && l7_len >= 1 && *(l7 + 0) == 0x16);
 
-    uint16_t init_flags = (is_syn ? 1U : 0U) | (is_tls ? 2U : 0U);
+    bool is_syn = (tcp_flags & 0x02U) != 0;
+    bool is_ack = (tcp_flags & 0x10U) != 0;
+    bool is_tls = (l7 && l7_len >= 1 && *(l7 + 0) == 0x16);
+    uint16_t step_flags = (is_syn ? 1U : 0U) | (is_tls ? 2U : 0U) | ((l7_len >= 16) ? 4U : 0U) | ((!is_syn && is_ack && l7_len == 0) ? 8U : 0U);
+
     if (slot->flow_hash != fid) {
-        slot->flow_hash = fid; slot->pkt_count = 1;
-        slot->fsm_flags = init_flags ? init_flags : ((l7_len >= 16) ? 4U : 0U);
+        slot->flow_hash = fid;
+        slot->pkt_count = 1;
+        slot->fsm_flags = step_flags;
         slot->last_l7_len = (uint16_t)(l7_len > 0xFFFF ? 0xFFFF : l7_len);
-        slot->same_len_streak = 0; slot->ema_popcnt = 64;
+        slot->same_len_streak = 0;
+        if (l7 && l7_len >= 16) {
+            slot->ema_popcnt = (uint32_t)(__builtin_popcountll(rd_le64(l7)) + __builtin_popcountll(rd_le64(l7 + 8)));
+        } else {
+            slot->ema_popcnt = 64;
+        }
         return ZK_VERDICT_PASS;
     }
+
     if (slot->pkt_count < 0xFFFFU) slot->pkt_count++;
-    slot->fsm_flags |= init_flags;
-    if ((slot->fsm_flags & 4U) != 0 && (slot->fsm_flags & 3U) == 0 && slot->pkt_count >= 4) return ZK_VERDICT_DROP;
+    slot->fsm_flags |= step_flags;
+
+    if ((slot->fsm_flags & 4U) != 0 && (slot->fsm_flags & 11U) == 0 && slot->pkt_count >= 4) return ZK_VERDICT_DROP;
 
     if (l7 && l7_len >= 16) {
         uint16_t cur_len = (uint16_t)(l7_len > 0xFFFF ? 0xFFFF : l7_len);
@@ -92,7 +107,9 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     uint16_t ip_tot = rd_be16(ip + 2);
     if (ip_tot < 20 || (size_t)ip_tot > ip_avail) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
     ip_avail = (size_t)ip_tot;
-    uint32_t src_ip = rd_le32(ip + 12), dst_ip = rd_le32(ip + 16);
+    uint32_t src_ip = 0, dst_ip = 0;
+    memcpy(&src_ip, ip + 12, sizeof(src_ip));
+    memcpy(&dst_ip, ip + 16, sizeof(dst_ip));
     if (out_src_ip_be) *out_src_ip_be = src_ip;
 
     enum zk_verdict v = inspect_l3_guard(ip, ip_avail);
@@ -107,10 +124,12 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
         if (l4_avail < 20) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
         uint8_t doff = (uint8_t)(((*(l4 + 12)) >> 4) * 4U);
         if (doff < 20 || l4_avail < doff) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
-        ports_word = rd_le32(l4); dport = rd_be16(l4 + 2); tcp_flags = *(l4 + 13); l7 = l4 + doff; l7_len = l4_avail - doff;
+        memcpy(&ports_word, l4, sizeof(ports_word));
+        dport = rd_be16(l4 + 2); tcp_flags = *(l4 + 13); l7 = l4 + doff; l7_len = l4_avail - doff;
     } else if (proto == 17) {
         if (l4_avail < 8) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
-        ports_word = rd_le32(l4); dport = rd_be16(l4 + 2); l7 = l4 + 8; l7_len = l4_avail - 8;
+        memcpy(&ports_word, l4, sizeof(ports_word));
+        dport = rd_be16(l4 + 2); l7 = l4 + 8; l7_len = l4_avail - 8;
     }
     ctx->total_inspected++;
     v = inspect_l7_payload(proto, dport, l7, l7_len);

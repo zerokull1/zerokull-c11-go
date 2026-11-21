@@ -21,6 +21,13 @@ struct zk_pkt_event {
     uint8_t  data[ZK_MAX_PKT_LEN];
 };
 
+struct zk_xdp_stats {
+    uint64_t rx_packets;
+    uint64_t xdp_drops;
+    uint64_t ringbuf_sent;
+    uint64_t ringbuf_drops;
+};
+
 struct zk_flow_slot {
     uint32_t flow_hash;
     uint16_t pkt_count;
