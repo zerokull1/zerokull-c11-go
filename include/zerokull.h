@@ -19,6 +19,8 @@ enum zk_verdict { ZK_VERDICT_PASS = 0, ZK_VERDICT_DROP = 1, ZK_VERDICT_BAN = 2 }
 struct zk_pkt_event {
     uint32_t wire_len;
     uint32_t cap_len;
+    uint32_t ingress_ifindex;
+    uint32_t _pad;
     uint8_t  data[ZK_MAX_PKT_LEN];
 };
 

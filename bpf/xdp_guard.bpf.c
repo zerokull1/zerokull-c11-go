@@ -5,13 +5,14 @@
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
+#include <linux/ipv6.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
 #define ZK_MAX_PKT_LEN 1536U
 
 struct zk_vlan_hdr { __be16 h_vlan_TCI; __be16 h_vlan_encapsulated_proto; };
-struct zk_pkt_event { __u32 wire_len; __u32 cap_len; __u8 data[ZK_MAX_PKT_LEN]; };
+struct zk_pkt_event { __u32 wire_len; __u32 cap_len; __u32 ingress_ifindex; __u32 _pad; __u8 data[ZK_MAX_PKT_LEN]; };
 struct zk_xdp_stats { __u64 rx_packets; __u64 xdp_drops; __u64 ringbuf_sent; __u64 ringbuf_drops; };
 
 struct { __uint(type, BPF_MAP_TYPE_LRU_HASH); __uint(max_entries, 65536); __type(key, __u32); __type(value, __u8); } blacklist_map SEC(".maps");
@@ -42,12 +43,30 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
             nh = (void *)(vh + 1);
         }
     }
+
+    // [Уязвимость #1 закрыта] Инспекция IPv6 (ETH_P_IPV6): отсекаем HopLimit=0/65/129, IPv6 Fragment (44) и RA/Redirect спуфинг
+    if (h_proto == bpf_htons(ETH_P_IPV6)) {
+        struct ipv6hdr *ip6 = nh;
+        if ((void *)(ip6 + 1) > data_end) { if (st) st->xdp_drops++; return XDP_DROP; }
+        if (ip6->version != 6 || ip6->hop_limit == 0 || ip6->hop_limit == 65 || ip6->hop_limit == 129 || ip6->nexthdr == 44) {
+            if (st) st->xdp_drops++;
+            return XDP_DROP;
+        }
+        return XDP_PASS;
+    }
+
     if (h_proto != bpf_htons(ETH_P_IP)) return XDP_PASS;
 
     struct iphdr *iph = nh;
     if ((void *)(iph + 1) > data_end) return XDP_PASS;
 
-    if (iph->version != 4 || iph->ihl != 5 || iph->ttl == 0 || iph->ttl == 65 || iph->ttl == 129 || (iph->frag_off & bpf_htons(0x3FFF)) != 0) {
+    // [Уязвимость #4 закрыта] Валидация tot_len, IHL, TTL, IPv4-фрагментации и Bogon/Martian source spoofing (0.0.0.0, 255.255.255.255, 127.0.0.0/8)
+    __u16 tot_len = bpf_ntohs(iph->tot_len);
+    __u32 src_host = bpf_ntohl(iph->saddr);
+    if (iph->version != 4 || iph->ihl != 5 || tot_len < 20 ||
+        iph->ttl == 0 || iph->ttl == 65 || iph->ttl == 129 ||
+        (iph->frag_off & bpf_htons(0x3FFF)) != 0 ||
+        src_host == 0U || src_host == 0xFFFFFFFFU || (src_host & 0xFF000000U) == 0x7F000000U) {
         if (st) st->xdp_drops++;
         return XDP_DROP;
     }
@@ -66,6 +85,9 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
     if (!ev) { if (st) st->ringbuf_drops++; return XDP_PASS; }
     ev->wire_len = (__u32)wire_len;
     ev->cap_len  = cap_len;
+    // [Уязвимость #2 закрыта] Фиксируем точный номер входного порта ctx->ingress_ifindex для многопортового узла
+    ev->ingress_ifindex = ctx->ingress_ifindex;
+    ev->_pad = 0;
     if (bpf_xdp_load_bytes(ctx, 0, ev->data, cap_len) < 0) { bpf_ringbuf_discard(ev, 0); return XDP_PASS; }
     bpf_ringbuf_submit(ev, 0);
     if (st) st->ringbuf_sent++;
