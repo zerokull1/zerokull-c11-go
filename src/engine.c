@@ -64,7 +64,7 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
     uint32_t h2 = zk_crc32c_u32(h1, ip_hi);
     uint32_t fid = zk_crc32c_u32(h2, p_canon);
     if (fid == 0) fid = 1U;
-    struct zk_flow_slot *slot = &ctx->flows[h2 & ZK_FLOW_MASK];
+    struct zk_flow_slot *slot = &ctx->flows[fid & ZK_FLOW_MASK];
 
     bool is_syn = (tcp_flags & 0x02U) != 0;
     bool is_ack = (tcp_flags & 0x10U) != 0;

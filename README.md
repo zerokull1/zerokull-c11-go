@@ -27,7 +27,7 @@
            ▼
 ┌──────────────────────────────────────────────────────────┐
 │ User-Space Engine: C11 (src/engine.c + src/daemon.c)     │
-│  ├─ L3 Guard: IHL != 5, TTL-спуфинг (0 / 65 / 129), фрагм.│
+│  ├─ L2/L3 Guard: 802.1Q/AD VLAN, IHL != 5, TTL (0/65/129), фрагм.│
 │  ├─ L4/L7 Inspectors: SMB1 (0xFF'SMB'), TLS 1.x, SCADA   │
 │  ├─ Stateful Flow Tracker (256 слотов, 4 KB L1d):        │
 │  │   • TCP/TLS FSM Out-of-Order (данные мимо рукопожатия) │
@@ -78,7 +78,7 @@ zerokull/
 ### Сборка и прогон автотестов
 
 ```bash
-git clone https://github.comzerokull1/zerokull.git
+git clone https://github.com/zerokull.git
 cd zerokull
 make
 make test
@@ -86,7 +86,7 @@ make test
 
 Ожидаемый вывод автотестов:
 ```text
-[TEST PASS] inspected=46 drops=2 bans=2
+[TEST PASS] inspected=51 drops=5 bans=3
 ```
 
 ### Запуск на сетевом интерфейсе

@@ -62,6 +62,10 @@ int main(void) {
         const uint8_t *h2_wu = (const uint8_t *)"\x00\x00\x04\x08\x00\x00\x00\x00\x00\x40\x00\x00\x01";
     assert(zk_inspect_packet(&ctx, pkt, build_tcp(pkt, 0x0606060A, 46000, 80, 64, 0x18, h2_wu, 13), &sip) == ZK_VERDICT_BAN);
 
+    assert(zk_inspect_packet(&ctx, pkt, build_tcp(pkt, 0x0707070A, 50001, 443, 64, 0x02, NULL, 0), &sip) == ZK_VERDICT_PASS);
+    assert(zk_inspect_packet(&ctx, pkt, build_tcp(pkt, 0x0707070A, 50002, 80, 64, 0x02, NULL, 0), &sip) == ZK_VERDICT_PASS);
+    assert(zk_inspect_packet(&ctx, pkt, build_tcp(pkt, 0x0707070A, 50001, 443, 64, 0x18, tls_buf, 6), &sip) == ZK_VERDICT_PASS);
+    assert(zk_inspect_packet(&ctx, pkt, build_tcp(pkt, 0x0707070A, 50002, 80, 64, 0x18, req, 27), &sip) == ZK_VERDICT_PASS);
     printf("[TEST PASS] inspected=%llu drops=%llu bans=%llu\n",
            (unsigned long long)ctx.total_inspected, (unsigned long long)ctx.total_drops, (unsigned long long)ctx.total_bans);
     free(pkt); free(web_buf); free(tun_buf);

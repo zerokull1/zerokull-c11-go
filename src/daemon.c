@@ -24,6 +24,7 @@ struct app_ctx {
     struct zk_engine_ctx engine;
     volatile struct zk_shm_telemetry *shm;
     int blacklist_fd;
+    int whitelist_fd;
     int stats_fd;
     unsigned int ncpus;
     struct zk_xdp_stats *cpu_stats;
@@ -53,6 +54,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
     if (zk_inspect_packet(&app->engine, ev->data, ev->cap_len, &src_ip) == ZK_VERDICT_BAN && src_ip != 0) {
         uint8_t one = 1;
         bpf_map_update_elem(app->blacklist_fd, &src_ip, &one, BPF_ANY);
+        bpf_map_delete_elem(app->whitelist_fd, &src_ip);
     }
     return 0;
 }
@@ -106,6 +108,7 @@ int main(int argc, char **argv) {
     zk_engine_init(&app.engine);
     app.shm = shm;
     app.blacklist_fd = bpf_map__fd(skel->maps.blacklist_map);
+    app.whitelist_fd = bpf_map__fd(skel->maps.whitelist_map);
     app.stats_fd     = bpf_map__fd(skel->maps.stats_map);
     app.ncpus        = ncpus;
     app.cpu_stats    = calloc(ncpus, sizeof(struct zk_xdp_stats));
