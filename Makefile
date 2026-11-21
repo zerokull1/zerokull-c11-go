@@ -29,3 +29,9 @@ test: build/test_suite
 
 clean:
 	rm -rf build
+
+install: build/zerokull-daemon
+	install -Dm755 build/zerokull-daemon /usr/local/bin/zerokull-daemon
+
+uninstall:
+	rm -f /usr/local/bin/zerokull-daemon

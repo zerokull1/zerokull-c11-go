@@ -1,15 +1,105 @@
-# ZEROKULL — Deterministic XDP + Ringbuf & Stateful L3–L7 DPI Engine (C11)
+# ZEROKULL
 
-Standard C11 + `libbpf` CO-RE port of the ZEROMANI packet inspection engine.
+[![CI](https://github.com)](https://github.com)
+![Standard](https://shields.io)
+![Kernel](https://shields.io)
+![License](https://shields.io)
 
-## Architecture
-- `bpf/xdp_guard.bpf.c`: Kernel XDP hook with L1 `XDP_DROP` IPv4 blacklist map, whitelist map, per-CPU counters, and zero-copy `BPF_MAP_TYPE_RINGBUF`.
-- `src/engine.c`: Portable C11 deterministic L3/L4/L7 packet inspectors + stateful flow tracker (TCP/TLS FSM anomaly detection & `POPCNT` EMA covert-tunnel entropy drift).
-- `src/daemon.c`: `libbpf` skeleton loader and `ring_buffer__poll` event loop (`~30 KB` binary).
-- `tests/test_suite.c`: Automated unit and behavioral verification suite.
+**ZEROKULL** — сверхкомпактный детерминированный движок периметровой защиты и инспекции трафика (L3–L7) для Linux, написанный на стандартном **C11** и **eBPF/XDP (`libbpf`)**.
 
-## Build & Test
-```bash
-make && make test
-sudo ./build/zerokull-daemon enp0s20u11
+Проект спроектирован с нулевым числом внешних runtime-зависимостей (кроме стандартного `glibc` и `libbpf`), без динамических аллокаций на горячем пути и с полным размещением рабочих таблиц в кэше L1/L2 процессора.
+
+---
+
+## Архитектура конвейера
+
+```text
+  [ Входящий кадр NIC ]
+           │
+           ▼
+┌──────────────────────────────────────────────────────────┐
+│ Ядро Linux: eBPF XDP Hook (bpf/xdp_guard.bpf.c)          │
+│  ├─ 1. L1 Blacklist Lookup (BPF_MAP_TYPE_HASH) ──► XDP_DROP
+│  ├─ 2. Whitelist Bypass (BPF_MAP_TYPE_HASH)    ──► XDP_PASS
+│  └─ 3. Zero-Copy Reserve (BPF_MAP_TYPE_RINGBUF, 256 KB)  │
+└──────────┬───────────────────────────────────────────────┘
+           │ shared mmap ring (0 sk_buff copies)
+           ▼
+┌──────────────────────────────────────────────────────────┐
+│ User-Space Engine: C11 (src/engine.c + src/daemon.c)     │
+│  ├─ L3 Guard: IHL != 5, TTL-спуфинг (0 / 65 / 129), фрагм.│
+│  ├─ L4/L7 Inspectors: SMB1 (0xFF'SMB'), TLS 1.x, SCADA   │
+│  ├─ Stateful Flow Tracker (256 слотов, 4 KB L1d):        │
+│  │   • TCP/TLS FSM Out-of-Order (данные мимо рукопожатия) │
+│  │   • Covert Tunnel Drift (POPCNT EMA + фикс. длина L7) │
+│  └─ Обратная связь: VERDICT_BAN ──► bpf_map_update_elem() │
+└──────────────────────────────────────────────────────────┘
 ```
+
+## Ключевые характеристики
+
+| Параметр | Значение |
+| :--- | :--- |
+| **Язык и стандарт** | ISO C11 (`-O3 -Wall -Wextra -Werror`) + eBPF C |
+| **Размер бинарника** | `~30 КБ` (`zerokull-daemon`) + `~12 КБ` (`xdp_guard.bpf.o`) |
+| **Механизм доставки** | `BPF_MAP_TYPE_RINGBUF` + `bpf_xdp_load_bytes` |
+| **Аппаратное ускорение** | SSE4.2 `CRC32C` (`__builtin_ia32_crc32si`) и `POPCNT` с переносимым fallback для ARM64 |
+| **Таблица потоков** | Фиксированный кольцевой массив на 256 слотов (`4 КБ`), `0` вызовов `malloc` в цикле |
+
+---
+
+## Структура репозитория
+
+```text
+zerokull/
+├── bpf/
+│   └── xdp_guard.bpf.c       # Ядерный XDP-фильтр, карты blacklist/whitelist, per-CPU статистика и Ringbuf
+├── include/
+│   └── zerokull.h            # Структуры событий, слотов потоков и API инспектора
+├── src/
+│   ├── engine.c              # Детерминированные L3–L7 инспекторы и Stateful FSM / Entropy Drift
+│   └── daemon.c              # Загрузчик libbpf skeleton и цикл ring_buffer__poll()
+├── tests/
+│   └── test_suite.c          # Модульные и поведенческие тесты (0 FP, TTL, SMB1, FSM, Covert Tunnel)
+├── .github/workflows/ci.yml  # Автоматическая сборка и прогон тестов в GitHub Actions
+├── Makefile                  # Сборка, тестирование и установка
+└── LICENSE                   # GNU General Public License v3.0
+```
+
+---
+
+## Требования и быстрый старт
+
+### Зависимости (Arch Linux / Debian / Ubuntu)
+
+* **Arch Linux:** `sudo pacman -S gcc clang llvm libbpf bpftool`
+* **Ubuntu / Debian:** `sudo apt install gcc clang llvm libbpf-dev libelf-dev zlib1g-dev bpftool`
+
+### Сборка и прогон автотестов
+
+```bash
+git clone https://github.com
+cd zerokull
+make
+make test
+```
+
+Ожидаемый вывод автотестов:
+```text
+[TEST PASS] inspected=52 drops=2 bans=2
+```
+
+### Запуск на сетевом интерфейсе
+
+```bash
+sudo make install
+sudo zerokull-daemon eth0
+```
+
+При получении `SIGINT` или `SIGTERM` демон корректно выводит итоговую статистику (`inspected`, `drops`, `bans`) и автоматически отключает XDP-хук от сетевого интерфейса.
+
+---
+
+## Лицензия
+
+Распространяется под лицензией **GNU General Public License v3.0** (`LICENSE`).
