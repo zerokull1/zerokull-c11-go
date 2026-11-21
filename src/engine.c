@@ -170,3 +170,28 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     else if (v == ZK_VERDICT_BAN) { ctx->total_drops++; ctx->total_bans++; }
     return v;
 }
+
+enum zk_verdict zk_exec_millicode(const uint16_t *code, size_t n_insns, const uint8_t *pkt, size_t len, enum zk_verdict base_v) {
+    if (!code || n_insns == 0) return base_v;
+    uint32_t r[8] = {0};
+    r[0] = (uint32_t)base_v;
+    r[1] = (uint32_t)(len > 0xFFFFU ? 0xFFFFU : len);
+    size_t steps = n_insns > 32U ? 32U : n_insns;
+    for (size_t pc = 0; pc < steps; pc++) {
+        uint16_t ins = code[pc];
+        uint8_t op  = (uint8_t)(ins >> 12);
+        uint8_t dst = (uint8_t)((ins >> 9) & 0x07U);
+        uint8_t src = (uint8_t)((ins >> 6) & 0x07U);
+        uint8_t imm = (uint8_t)(ins & 0xFFU);
+        switch (op) {
+            case 0x1: r[dst] = imm; break;
+            case 0x2: r[dst] ^= r[src]; break;
+            case 0x3: r[dst] = (pkt && (size_t)imm < len) ? (uint32_t)pkt[imm] : 0U; break;
+            case 0x4: r[0] = (r[dst] == r[src]) ? (uint32_t)ZK_VERDICT_BAN : r[0]; break;
+            case 0x5: r[0] = (r[dst] < (uint32_t)imm) ? (uint32_t)ZK_VERDICT_DROP : r[0]; break;
+            case 0xF: pc = steps; break;
+            default: break;
+        }
+    }
+    return (r[0] <= (uint32_t)ZK_VERDICT_BAN) ? (enum zk_verdict)r[0] : ZK_VERDICT_DROP;
+}

@@ -66,6 +66,13 @@ int main(void) {
     uint8_t h2_flood[13] = {0x00, 0x00, 0x04, 0x08, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00};
     assert(zk_inspect_packet(&ctx, pkt, build_tcp(pkt, 0x0701010A, 46000, 80, 64, 0x18, h2_flood, 13), &sip) == ZK_VERDICT_BAN);
 
+    uint16_t mcode[] = {
+        (0x1U << 12) | (2U << 9) | 0x45U,
+        (0x3U << 12) | (3U << 9) | 14U,
+        (0x4U << 12) | (2U << 9) | (3U << 6),
+        (0xFU << 12)
+    };
+    assert(zk_exec_millicode(mcode, 4, pkt, 60, ZK_VERDICT_PASS) == ZK_VERDICT_BAN);
     printf("[TEST PASS] inspected=%llu drops=%llu bans=%llu\n",
            (unsigned long long)ctx.total_inspected,
            (unsigned long long)ctx.total_drops,

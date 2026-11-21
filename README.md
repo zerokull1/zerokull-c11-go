@@ -5,7 +5,7 @@
 ## Архитектура и характеристики
 
 * **1. Kernel Space (eBPF XDP):** Блокировки по черному списку (LRU Hash), белый список и Zero-Copy Ringbuf (256 KB).
-* **2. Data-Plane (ISO C11):** Инспекция L2–L7 (TLS, HTTP/2, SMB1), stateful-таблица потоков и производительность **84.82 Mpps**.
+* **2. Data-Plane (ISO C11 + 16-bit Millicode VM):** Программируемые 16-битные микропрограммы политики (`zk_exec_millicode`), Инспекция L2–L7 (TLS, HTTP/2, SMB1), stateful-таблица потоков и производительность **84.82 Mpps**.
 * **3. Control-Plane (Go 1.22+):** Статическая CLI-утилита `zerokull-ctl` с поддержкой Prometheus `/metrics` и JSON API.
 
 ## Быстрый старт

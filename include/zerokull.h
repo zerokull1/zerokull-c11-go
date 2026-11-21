@@ -48,6 +48,8 @@ struct zk_engine_ctx {
 void zk_engine_init(struct zk_engine_ctx *ctx);
 enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt, size_t len, uint32_t *out_src_ip_be);
 
+enum zk_verdict zk_exec_millicode(const uint16_t *code, size_t n_insns, const uint8_t *pkt, size_t len, enum zk_verdict base_v);
+
 #define ZK_SHM_NAME "/zerokull_stats"
 #define ZK_SHM_MAGIC 0x5A45524F4B554C4CULL
 
