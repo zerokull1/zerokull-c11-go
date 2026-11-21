@@ -37,3 +37,17 @@ void zk_engine_init(struct zk_engine_ctx *ctx);
 enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt, size_t len, uint32_t *out_src_ip_be);
 
 #endif
+
+/* Снапшот телеметрии реального времени в /dev/shm/zerokull_stats */
+#define ZK_SHM_NAME "/zerokull_stats"
+#define ZK_SHM_MAGIC 0x5A45524F4D414E49ULL
+
+struct zk_shm_telemetry {
+    uint64_t magic;
+    uint32_t version;
+    uint32_t pid;
+    uint64_t start_ts;
+    uint64_t inspected;
+    uint64_t drops;
+    uint64_t bans;
+};

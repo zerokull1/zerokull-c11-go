@@ -94,6 +94,9 @@ make test
 ```bash
 sudo make install
 sudo zerokull-daemon eth0
+
+# Live zero-syscall telemetry reader (/dev/shm/zerokull_stats)
+zerokull-stat -w
 ```
 
 При получении `SIGINT` или `SIGTERM` демон корректно выводит итоговую статистику (`inspected`, `drops`, `bans`) и автоматически отключает XDP-хук от сетевого интерфейса.
