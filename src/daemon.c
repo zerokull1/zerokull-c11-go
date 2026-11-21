@@ -11,12 +11,16 @@
 #include <fcntl.h>
 #include <net/if.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
+
+#define ZK_MAX_PORTS 1024
 
 static volatile sig_atomic_t g_stop = 0;
 
@@ -31,6 +35,35 @@ struct app_ctx {
 };
 
 static void on_signal(int sig) { (void)sig; g_stop = 1; }
+
+static bool is_physical_iface(const char *name) {
+    if (!name || !name[0]) return false;
+    if (strcmp(name, "lo") == 0) return false;
+    if (strncmp(name, "veth", 4) == 0) return false;
+    if (strncmp(name, "docker", 6) == 0) return false;
+    if (strncmp(name, "virbr", 5) == 0) return false;
+    if (strncmp(name, "br-", 3) == 0) return false;
+    if (strncmp(name, "tun", 3) == 0 || strncmp(name, "tap", 3) == 0) return false;
+    return true;
+}
+
+static unsigned int sync_all_ports_xdp(struct bpf_program *prog, struct bpf_link **links, bool all_ports, unsigned int single_idx) {
+    unsigned int active = 0;
+    char ifname[IF_NAMESIZE];
+    for (unsigned int idx = 2; idx < ZK_MAX_PORTS; idx++) {
+        if (!all_ports && idx != single_idx) continue;
+        if (if_indextoname(idx, ifname) != NULL && (!all_ports || is_physical_iface(ifname))) {
+            if (!links[idx]) {
+                links[idx] = bpf_program__attach_xdp(prog, (int)idx);
+            }
+            if (links[idx]) active++;
+        } else if (links[idx]) {
+            bpf_link__destroy(links[idx]);
+            links[idx] = NULL;
+        }
+    }
+    return active;
+}
 
 static void sync_telemetry(struct app_ctx *app) {
     if (!app->shm) return;
@@ -65,9 +98,16 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
 }
 
 int main(int argc, char **argv) {
-    const char *ifname = (argc > 1) ? *(argv + 1) : "enp0s20u11";
-    unsigned int ifindex = if_nametoindex(ifname);
-    if (ifindex == 0) { perror("if_nametoindex"); return 1; }
+    bool all_ports = true;
+    unsigned int single_idx = 0;
+    const char *mode_label = "ALL-PORTS-MESH (1..1024 NICs)";
+
+    if (argc > 1 && strcmp(argv[1], "all") != 0 && strcmp(argv[1], "--all") != 0) {
+        all_ports = false;
+        mode_label = argv[1];
+        single_idx = if_nametoindex(mode_label);
+        if (single_idx == 0 || single_idx >= ZK_MAX_PORTS) { perror("if_nametoindex"); return 1; }
+    }
 
     struct sigaction sa = { .sa_handler = on_signal };
     sigemptyset(&sa.sa_mask);
@@ -77,9 +117,13 @@ int main(int argc, char **argv) {
     struct xdp_guard_bpf *skel = xdp_guard_bpf__open_and_load();
     if (!skel) { fprintf(stderr, "open_and_load failed\n"); return 1; }
 
-    struct bpf_link *link = bpf_program__attach_xdp(skel->progs.zerokull_xdp_guard, (int)ifindex);
-    if (!link) {
-        perror("bpf_program__attach_xdp");
+    struct bpf_link **links = calloc(ZK_MAX_PORTS, sizeof(struct bpf_link *));
+    if (!links) { xdp_guard_bpf__destroy(skel); return 1; }
+
+    unsigned int attached = sync_all_ports_xdp(skel->progs.zerokull_xdp_guard, links, all_ports, single_idx);
+    if (attached == 0) {
+        fprintf(stderr, "no active physical interfaces attached\n");
+        free(links);
         xdp_guard_bpf__destroy(skel);
         return 1;
     }
@@ -90,7 +134,8 @@ int main(int argc, char **argv) {
         if (flock(shm_fd, LOCK_EX | LOCK_NB) < 0) {
             fprintf(stderr, "zerokull-daemon already running (shm locked)\n");
             close(shm_fd);
-            bpf_link__destroy(link);
+            for (unsigned int i = 0; i < ZK_MAX_PORTS; i++) if (links[i]) bpf_link__destroy(links[i]);
+            free(links);
             xdp_guard_bpf__destroy(skel);
             return 1;
         }
@@ -126,16 +171,18 @@ int main(int argc, char **argv) {
         free(app.cpu_stats);
         if (shm) { shm->pid = 0; munmap((void *)shm, sizeof(*shm)); shm_unlink(ZK_SHM_NAME); }
         if (shm_fd >= 0) close(shm_fd);
-        bpf_link__destroy(link);
+        for (unsigned int i = 0; i < ZK_MAX_PORTS; i++) if (links[i]) bpf_link__destroy(links[i]);
+        free(links);
         xdp_guard_bpf__destroy(skel);
         return 1;
     }
 
-    printf("[zerokull] active on %s (ifindex=%u, mode=BPF_LINK_XDP, shm=/dev/shm%s)\n",
-           ifname, ifindex, ZK_SHM_NAME);
+    printf("[zerokull] active on %s (attached_nics=%u, mode=BPF_LINK_XDP, shm=/dev/shm%s)\n",
+           mode_label, attached, ZK_SHM_NAME);
     fflush(stdout);
     while (!g_stop) {
         if (ring_buffer__poll(rb, 100) < 0 && errno != EINTR) break;
+        if (all_ports) (void)sync_all_ports_xdp(skel->progs.zerokull_xdp_guard, links, true, 0);
         sync_telemetry(&app);
     }
 
@@ -149,7 +196,8 @@ int main(int argc, char **argv) {
     free(app.cpu_stats);
     if (shm) { shm->pid = 0; munmap((void *)shm, sizeof(*shm)); shm_unlink(ZK_SHM_NAME); }
     if (shm_fd >= 0) close(shm_fd);
-    bpf_link__destroy(link);
+    for (unsigned int i = 0; i < ZK_MAX_PORTS; i++) if (links[i]) bpf_link__destroy(links[i]);
+    free(links);
     xdp_guard_bpf__destroy(skel);
     return 0;
 }
