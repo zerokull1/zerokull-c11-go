@@ -1,3 +1,7 @@
+// ZEROKULL (zerokull1) | Author Signature: 0x5A45524F4B554C4CULL
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0.
+
 #define _POSIX_C_SOURCE 200809L
 #include "zerokull.h"
 #include "xdp_guard.skel.h"
@@ -17,7 +21,7 @@ static volatile sig_atomic_t g_stop = 0;
 
 struct app_ctx {
     struct zk_engine_ctx engine;
-    struct zk_shm_telemetry *shm;
+    volatile struct zk_shm_telemetry *shm;
     int blacklist_fd;
 };
 
@@ -27,6 +31,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
     struct app_ctx *app = (struct app_ctx *)ctx;
     const struct zk_pkt_event *ev = (const struct zk_pkt_event *)data;
     if (data_sz < offsetof(struct zk_pkt_event, data) || ev->cap_len > ZK_MAX_PKT_LEN) return 0;
+    if (data_sz < offsetof(struct zk_pkt_event, data) + (size_t)ev->cap_len) return 0;
 
     uint32_t src_ip = 0;
     if (zk_inspect_packet(&app->engine, ev->data, ev->cap_len, &src_ip) == ZK_VERDICT_BAN && src_ip != 0) {
@@ -60,19 +65,20 @@ int main(int argc, char **argv) {
     }
 
     int shm_fd = shm_open(ZK_SHM_NAME, O_CREAT | O_RDWR, 0644);
-    struct zk_shm_telemetry *shm = NULL;
-    if (shm_fd >= 0 && ftruncate(shm_fd, sizeof(*shm)) == 0) {
-        void *p = mmap(NULL, sizeof(*shm), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-        if (p != MAP_FAILED) {
-            shm = (struct zk_shm_telemetry *)p;
-            shm->magic = ZK_SHM_MAGIC;
-            shm->version = 1;
-            shm->pid = (uint32_t)getpid();
-            shm->start_ts = (uint64_t)time(NULL);
-            shm->inspected = 0; shm->drops = 0; shm->bans = 0;
+    volatile struct zk_shm_telemetry *shm = NULL;
+    if (shm_fd >= 0) {
+        if (ftruncate(shm_fd, sizeof(*shm)) == 0) {
+            void *p = mmap(NULL, sizeof(*shm), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+            if (p != MAP_FAILED) {
+                shm = (volatile struct zk_shm_telemetry *)p;
+                shm->magic = ZK_SHM_MAGIC; shm->version = 1;
+                shm->pid = (uint32_t)getpid(); shm->start_ts = (uint64_t)time(NULL);
+                shm->inspected = 0; shm->drops = 0; shm->bans = 0;
+            }
         }
+        close(shm_fd);
+        if (!shm) shm_unlink(ZK_SHM_NAME);
     }
-    if (shm_fd >= 0) close(shm_fd);
 
     struct app_ctx app;
     zk_engine_init(&app.engine);
@@ -81,7 +87,7 @@ int main(int argc, char **argv) {
 
     struct ring_buffer *rb = ring_buffer__new(bpf_map__fd(skel->maps.ringbuf_map), handle_event, &app, NULL);
     if (!rb) {
-        if (shm) munmap(shm, sizeof(*shm));
+        if (shm) { munmap((void *)shm, sizeof(*shm)); shm_unlink(ZK_SHM_NAME); }
         bpf_xdp_detach((int)ifindex, xdp_flags, NULL);
         xdp_guard_bpf__destroy(skel);
         return 1;
@@ -93,7 +99,7 @@ int main(int argc, char **argv) {
         if (ring_buffer__poll(rb, 100) < 0 && errno != EINTR) break;
     }
 
-    if (shm) { shm->pid = 0; munmap(shm, sizeof(*shm)); }
+    if (shm) { shm->pid = 0; munmap((void *)shm, sizeof(*shm)); }
     ring_buffer__free(rb);
     bpf_xdp_detach((int)ifindex, xdp_flags, NULL);
     xdp_guard_bpf__destroy(skel);

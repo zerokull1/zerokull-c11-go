@@ -1,3 +1,7 @@
+// ZEROKULL (zerokull1) | Author Signature: 0x5A45524F4B554C4CULL
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0.
+
 #ifndef ZEROKULL_H
 #define ZEROKULL_H
 
@@ -36,9 +40,6 @@ struct zk_engine_ctx {
 void zk_engine_init(struct zk_engine_ctx *ctx);
 enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt, size_t len, uint32_t *out_src_ip_be);
 
-#endif
-
-/* Снапшот телеметрии реального времени в /dev/shm/zerokull_stats */
 #define ZK_SHM_NAME "/zerokull_stats"
 #define ZK_SHM_MAGIC 0x5A45524F4B554C4CULL
 
@@ -51,3 +52,5 @@ struct zk_shm_telemetry {
     uint64_t drops;
     uint64_t bans;
 };
+
+#endif

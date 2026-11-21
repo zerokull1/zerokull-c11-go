@@ -1,3 +1,7 @@
+// ZEROKULL (zerokull1) | Author Signature: 0x5A45524F4B554C4CULL
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0.
+
 #include "zerokull.h"
 #include <string.h>
 
@@ -25,6 +29,7 @@ void zk_engine_init(struct zk_engine_ctx *ctx) {
 
 static inline enum zk_verdict inspect_l3_guard(const uint8_t *ip, size_t ip_avail) {
     if (ip_avail < 20 || (((*(ip + 0)) & 0x0FU) * 4U) != 20) return ZK_VERDICT_DROP;
+    if ((rd_be16(ip + 6) & 0x3FFFU) != 0) return ZK_VERDICT_DROP;
     uint8_t ttl = *(ip + 8);
     if (ttl == 0 || ttl == 65 || ttl == 129) return ZK_VERDICT_DROP;
     return ZK_VERDICT_PASS;
@@ -47,6 +52,7 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
 static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, uint32_t src_ip, uint32_t dst_ip,
                                                    uint32_t ports_word, uint8_t tcp_flags, const uint8_t *l7, size_t l7_len) {
     uint32_t fid = zk_crc32c_u32(src_ip ^ dst_ip, ports_word);
+    if (fid == 0) fid = 1U;
     struct zk_flow_slot *slot = &ctx->flows[fid & ZK_FLOW_MASK];
     bool is_syn = (tcp_flags & 0x02U) != 0;
     bool is_tls = (l7 && l7_len >= 1 && *(l7 + 0) == 0x16);
@@ -58,14 +64,15 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
         slot->same_len_streak = 0; slot->ema_popcnt = 64;
         return ZK_VERDICT_PASS;
     }
-    slot->pkt_count++;
+    if (slot->pkt_count < 0xFFFFU) slot->pkt_count++;
     if (is_syn || is_tls) slot->fsm_flags |= 1U;
     if ((slot->fsm_flags & 4U) != 0 && (slot->fsm_flags & 1U) == 0 && slot->pkt_count >= 4) return ZK_VERDICT_DROP;
 
     if (l7 && l7_len >= 16) {
         uint16_t cur_len = (uint16_t)(l7_len > 0xFFFF ? 0xFFFF : l7_len);
-        if (slot->last_l7_len == cur_len) slot->same_len_streak++;
-        else { slot->last_l7_len = cur_len; slot->same_len_streak = 0; }
+        if (slot->last_l7_len == cur_len) {
+            if (slot->same_len_streak < 0xFFFFU) slot->same_len_streak++;
+        } else { slot->last_l7_len = cur_len; slot->same_len_streak = 0; }
         uint32_t bits = (uint32_t)(__builtin_popcountll(rd_le64(l7)) + __builtin_popcountll(rd_le64(l7 + 8)));
         slot->ema_popcnt = (slot->ema_popcnt * 3U + bits) >> 2;
         if (slot->pkt_count >= 12 && slot->same_len_streak >= 16 && slot->ema_popcnt >= 56 && slot->ema_popcnt <= 72)
@@ -78,23 +85,24 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     if (!ctx || !pkt || len < 34 || rd_be16(pkt + 12) != 0x0800) return ZK_VERDICT_PASS;
     const uint8_t *ip = pkt + 14;
     size_t ip_avail = len - 14;
+    uint32_t src_ip = rd_le32(ip + 12), dst_ip = rd_le32(ip + 16);
+    if (out_src_ip_be) *out_src_ip_be = src_ip;
+
     enum zk_verdict v = inspect_l3_guard(ip, ip_avail);
     if (v != ZK_VERDICT_PASS) { ctx->total_inspected++; ctx->total_drops++; return v; }
 
-    uint32_t src_ip = rd_le32(ip + 12), dst_ip = rd_le32(ip + 16);
-    if (out_src_ip_be) *out_src_ip_be = src_ip;
     uint8_t proto = *(ip + 9);
     const uint8_t *l4 = ip + 20;
     size_t l4_avail = ip_avail - 20;
     uint16_t dport = 0; uint8_t tcp_flags = 0; const uint8_t *l7 = NULL; size_t l7_len = 0; uint32_t ports_word = 0;
 
     if (proto == 6) {
-        if (l4_avail < 20) return ZK_VERDICT_DROP;
+        if (l4_avail < 20) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
         uint8_t doff = (uint8_t)(((*(l4 + 12)) >> 4) * 4U);
-        if (doff < 20 || l4_avail < doff) return ZK_VERDICT_DROP;
+        if (doff < 20 || l4_avail < doff) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
         ports_word = rd_le32(l4); dport = rd_be16(l4 + 2); tcp_flags = *(l4 + 13); l7 = l4 + doff; l7_len = l4_avail - doff;
     } else if (proto == 17) {
-        if (l4_avail < 8) return ZK_VERDICT_DROP;
+        if (l4_avail < 8) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
         ports_word = rd_le32(l4); dport = rd_be16(l4 + 2); l7 = l4 + 8; l7_len = l4_avail - 8;
     }
     ctx->total_inspected++;
