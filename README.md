@@ -31,3 +31,8 @@ GNU General Public License v3.0 (`LICENSE`).
 
 ---
 *Author Signature: `ZEROKULL (zerokull1) | 0x5A45524F4B554C4CULL`*
+
+
+## Лицензия
+
+Этот проект распространяется под лицензией **GNU Affero General Public License v3.0 (AGPL-3.0)** — см. файл [`LICENSE`](LICENSE). Любое использование модифицированных версий в сетевых и облачных сервисах требует раскрытия исходного кода.
