@@ -12,8 +12,11 @@ all: build/zerokull-daemon build/zerokull-stat build/test_suite
 build:
 	mkdir -p build
 
+MULTIARCH := $(shell $(CC) -print-multiarch 2>/dev/null)
+BPF_INC   := $(if $(MULTIARCH),-I/usr/include/$(MULTIARCH),)
+
 build/xdp_guard.bpf.o: bpf/xdp_guard.bpf.c | build
-	$(CLANG) -O2 -g -target bpf -D__TARGET_ARCH_$(ARCH) -Iinclude -c $< -o $@
+	$(CLANG) -O2 -g -target bpf -D__TARGET_ARCH_$(ARCH) -Iinclude $(BPF_INC) -c $< -o $@
 
 build/xdp_guard.skel.h: build/xdp_guard.bpf.o
 	$(BPFTOOL) gen skeleton $< > $@
