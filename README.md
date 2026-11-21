@@ -36,3 +36,4 @@ zerokull-ctl serve 127.0.0.1:9109
 ## Hardening & Anti-Eviction Guarantees
 - **Flow-Slot Anti-Eviction Lock:** Warmed flow state slots (`pkt_count >= 8`) are protected against single-packet hash-collision slot eviction (`src/engine.c`).
 - **L3/L4 Anomaly & Scan Filtering:** Immediate deterministic drop of IPv4 fragments (`MF` / `offset > 0`), non-standard `IHL != 5`, `TTL 0/65/129`, and anomalous TCP flag combinations (`Null`, `FIN-only`, `SYN+FIN`, `XMAS`).
+- **IPv6 & Bogon/Martian XDP Filtering:** Early driver-level inspection of IPv6 headers (`HopLimit` anomalies & Fragment Extension Header `44`), IPv4 `tot_len` validation, Bogon/Martian source drop (`0.0.0.0`, `255.255.255.255`, `127.0.0.0/8`), and per-event `ingress_ifindex` tagging in `BPF_MAP_TYPE_RINGBUF`.
