@@ -19,7 +19,7 @@
            ▼
 ┌──────────────────────────────────────────────────────────┐
 │ Ядро Linux: eBPF XDP Hook (bpf/xdp_guard.bpf.c)          │
-│  ├─ 1. L1 Blacklist Lookup (BPF_MAP_TYPE_HASH) ──► XDP_DROP
+│  ├─ 1. L1 Blacklist Lookup (BPF_MAP_TYPE_LRU_HASH) ──► XDP_DROP
 │  ├─ 2. Whitelist Bypass (BPF_MAP_TYPE_HASH)    ──► XDP_PASS
 │  └─ 3. Zero-Copy Reserve (BPF_MAP_TYPE_RINGBUF, 256 KB)  │
 └──────────┬───────────────────────────────────────────────┘
@@ -86,7 +86,7 @@ make test
 
 Ожидаемый вывод автотестов:
 ```text
-[TEST PASS] inspected=52 drops=2 bans=2
+[TEST PASS] inspected=46 drops=2 bans=2
 ```
 
 ### Запуск на сетевом интерфейсе

@@ -51,22 +51,25 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
 
 static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, uint32_t src_ip, uint32_t dst_ip,
                                                    uint32_t ports_word, uint8_t tcp_flags, const uint8_t *l7, size_t l7_len) {
-    uint32_t fid = zk_crc32c_u32(src_ip ^ dst_ip, ports_word);
+    uint32_t p_swapped = (ports_word >> 16) | (ports_word << 16);
+    uint32_t p_canon = (ports_word < p_swapped) ? ports_word : p_swapped;
+    uint32_t fid = zk_crc32c_u32(src_ip ^ dst_ip, p_canon);
     if (fid == 0) fid = 1U;
     struct zk_flow_slot *slot = &ctx->flows[fid & ZK_FLOW_MASK];
     bool is_syn = (tcp_flags & 0x02U) != 0;
     bool is_tls = (l7 && l7_len >= 1 && *(l7 + 0) == 0x16);
 
+    uint16_t init_flags = (is_syn ? 1U : 0U) | (is_tls ? 2U : 0U);
     if (slot->flow_hash != fid) {
         slot->flow_hash = fid; slot->pkt_count = 1;
-        slot->fsm_flags = (is_syn || is_tls) ? 1U : ((!is_syn && !is_tls && l7_len >= 16) ? 4U : 0U);
+        slot->fsm_flags = init_flags ? init_flags : ((l7_len >= 16) ? 4U : 0U);
         slot->last_l7_len = (uint16_t)(l7_len > 0xFFFF ? 0xFFFF : l7_len);
         slot->same_len_streak = 0; slot->ema_popcnt = 64;
         return ZK_VERDICT_PASS;
     }
     if (slot->pkt_count < 0xFFFFU) slot->pkt_count++;
-    if (is_syn || is_tls) slot->fsm_flags |= 1U;
-    if ((slot->fsm_flags & 4U) != 0 && (slot->fsm_flags & 1U) == 0 && slot->pkt_count >= 4) return ZK_VERDICT_DROP;
+    slot->fsm_flags |= init_flags;
+    if ((slot->fsm_flags & 4U) != 0 && (slot->fsm_flags & 3U) == 0 && slot->pkt_count >= 4) return ZK_VERDICT_DROP;
 
     if (l7 && l7_len >= 16) {
         uint16_t cur_len = (uint16_t)(l7_len > 0xFFFF ? 0xFFFF : l7_len);
@@ -75,7 +78,7 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
         } else { slot->last_l7_len = cur_len; slot->same_len_streak = 0; }
         uint32_t bits = (uint32_t)(__builtin_popcountll(rd_le64(l7)) + __builtin_popcountll(rd_le64(l7 + 8)));
         slot->ema_popcnt = (slot->ema_popcnt * 3U + bits) >> 2;
-        if (slot->pkt_count >= 12 && slot->same_len_streak >= 16 && slot->ema_popcnt >= 56 && slot->ema_popcnt <= 72)
+        if ((slot->fsm_flags & 2U) == 0 && slot->pkt_count >= 12 && slot->same_len_streak >= 16 && slot->ema_popcnt >= 56 && slot->ema_popcnt <= 72)
             return ZK_VERDICT_BAN;
     }
     return ZK_VERDICT_PASS;
@@ -85,6 +88,10 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     if (!ctx || !pkt || len < 34 || rd_be16(pkt + 12) != 0x0800) return ZK_VERDICT_PASS;
     const uint8_t *ip = pkt + 14;
     size_t ip_avail = len - 14;
+    if (ip_avail < 20) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
+    uint16_t ip_tot = rd_be16(ip + 2);
+    if (ip_tot < 20 || (size_t)ip_tot > ip_avail) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
+    ip_avail = (size_t)ip_tot;
     uint32_t src_ip = rd_le32(ip + 12), dst_ip = rd_le32(ip + 16);
     if (out_src_ip_be) *out_src_ip_be = src_ip;
 

@@ -7,6 +7,8 @@
 static size_t build_tcp(uint8_t *buf, uint32_t src_ip, uint16_t sport, uint16_t dport,
                         uint8_t ttl, uint8_t flags, const uint8_t *payload, size_t plen) {
     memset(buf, 0, 54 + plen);
+    uint16_t ip_tot = (uint16_t)(40 + plen);
+    *(buf + 16) = (uint8_t)(ip_tot >> 8); *(buf + 17) = (uint8_t)(ip_tot & 0xFF);
     *(buf + 12) = 0x08; *(buf + 13) = 0x00; *(buf + 14) = 0x45;
     *(buf + 22) = ttl;  *(buf + 23) = 6;
     memcpy(buf + 26, &src_ip, 4);
