@@ -40,7 +40,7 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
 
 /* Снапшот телеметрии реального времени в /dev/shm/zerokull_stats */
 #define ZK_SHM_NAME "/zerokull_stats"
-#define ZK_SHM_MAGIC 0x5A45524F4D414E49ULL
+#define ZK_SHM_MAGIC 0x5A45524F4B554C4CULL
 
 struct zk_shm_telemetry {
     uint64_t magic;
