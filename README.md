@@ -37,3 +37,9 @@ zerokull-ctl serve 127.0.0.1:9109
 - **Flow-Slot Anti-Eviction Lock:** Warmed flow state slots (`pkt_count >= 8`) are protected against single-packet hash-collision slot eviction (`src/engine.c`).
 - **L3/L4 Anomaly & Scan Filtering:** Immediate deterministic drop of IPv4 fragments (`MF` / `offset > 0`), non-standard `IHL != 5`, `TTL 0/65/129`, and anomalous TCP flag combinations (`Null`, `FIN-only`, `SYN+FIN`, `XMAS`).
 - **IPv6 & Bogon/Martian XDP Filtering:** Early driver-level inspection of IPv6 headers (`HopLimit` anomalies & Fragment Extension Header `44`), IPv4 `tot_len` validation, Bogon/Martian source drop (`0.0.0.0`, `255.255.255.255`, `127.0.0.0/8`), and per-event `ingress_ifindex` tagging in `BPF_MAP_TYPE_RINGBUF`.
+
+## Adaptive Multi-WAN ECMP & Early-Boot Perimeter Lock
+
+- **Adaptive Multi-WAN (`deploy/zeromani-multiwan.sh` + `deploy/zeromani-multiwan-watchdog.py`):** Automatically aggregates all active uplinks (USB tethering, Wi-Fi, Ethernet) via L4 ECMP (`fib_multipath_hash_policy=1`), binds active flows with `nftables` Sticky Connmark (`ct mark`) and Per-NIC SNAT (`snat ip to`), enforces outbound `TTL=65` + `MTU 1380` + `FQ`, and dynamically recalculates `nexthop` weights every 3 seconds based on live RTT and packet loss.
+- **Early-Boot `network-pre.target` Lock (`deploy/install-early-boot.sh`):** Binds `nftables.service`, `zeromani-18caps.service` (All-Ports XDP Mesh), and `zeromani-core3-guard.service` strictly `Before=network-pre.target NetworkManager.service`, eliminating the warm/cold reboot race window before NICs and DHCP come online.
+- **Mobile Gateway XDP Compatibility:** Permits inbound `TTL=65` / `HopLimit=65` frames at the XDP ingress layer for seamless operation behind mobile tethering gateways.
