@@ -73,6 +73,17 @@ int main(void) {
         (0xFU << 12)
     };
     assert(zk_exec_millicode(mcode, 4, pkt, 60, ZK_VERDICT_PASS) == ZK_VERDICT_BAN);
+        {
+        uint8_t pkt_trav[74] = {
+            0,0,0,0,0,1, 0,0,0,0,0,2, 0x08,0x00,
+            0x45,0x00, 0x00,0x3c, 0x00,0x01, 0x40,0x00, 0x40,0x06, 0x00,0x00,
+            10,0,0,99, 10,0,0,1,
+            0x1f,0x90, 0x00,0x50, 0,0,0,1, 0,0,0,1, 0x50,0x18, 0x20,0x00, 0,0, 0,0,
+            'G','E','T',' ','/','.','.',';','/','e','t','c','/','p','a','s','s','w','d',' '
+        };
+        uint32_t bip = 0;
+        if (zk_inspect_packet(&ctx, pkt_trav, sizeof(pkt_trav), &bip) != ZK_VERDICT_BAN) return 91;
+    }
     printf("[TEST PASS] inspected=%llu drops=%llu bans=%llu\n",
            (unsigned long long)ctx.total_inspected,
            (unsigned long long)ctx.total_drops,
