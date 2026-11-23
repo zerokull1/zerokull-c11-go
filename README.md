@@ -43,3 +43,11 @@ zerokull-ctl serve 127.0.0.1:9109
 - **Adaptive Multi-WAN (`deploy/zeromani-multiwan.sh` + `deploy/zeromani-multiwan-watchdog.py`):** Automatically aggregates all active uplinks (USB tethering, Wi-Fi, Ethernet) via L4 ECMP (`fib_multipath_hash_policy=1`), binds active flows with `nftables` Sticky Connmark (`ct mark`) and Per-NIC SNAT (`snat ip to`), enforces outbound `TTL=65` + `MTU 1380` + `FQ`, and dynamically recalculates `nexthop` weights every 3 seconds based on live RTT and packet loss.
 - **Early-Boot `network-pre.target` Lock (`deploy/install-early-boot.sh`):** Binds `nftables.service`, `zeromani-18caps.service` (All-Ports XDP Mesh), and `zeromani-core3-guard.service` strictly `Before=network-pre.target NetworkManager.service`, eliminating the warm/cold reboot race window before NICs and DHCP come online.
 - **Mobile Gateway XDP Compatibility:** Permits inbound `TTL=65` / `HopLimit=65` frames at the XDP ingress layer for seamless operation behind mobile tethering gateways.
+
+## 30-Second Reproducible Audit Stand
+
+Run a full end-to-end verification (build, unit tests, isolated `netns` `BPF_LINK_XDP` attachment, mixed exploit injection, zero-syscall `/dev/shm` telemetry, and Go JSON/Prometheus API) in a single command:
+
+```bash
+sudo ./tools/demo_audit_30s.sh
+```
