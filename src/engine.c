@@ -85,11 +85,12 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
                 for (size_t h = 4U; h <= scan_lim; h++) {
                     if (*(l7 + h - 1U) != 0x0AU) continue;
                     if (*(l7 + h) == 0x0DU || *(l7 + h) == 0x0AU) break;
-                    uint64_t hw = 0;
+                    uint64_t hw = 0, hw2 = 0;
                     memcpy(&hw, l7 + h, sizeof(hw));
+                    memcpy(&hw2, l7 + h + 8U, sizeof(hw2));
                     uint64_t hw_up = hw & 0xDFDFDFDFDFDFDFDFULL;
-                    if (hw_up == 0x0D544E45544E4F43ULL) has_cl++;
-                    if (hw_up == 0x524546534E415254ULL) has_te++;
+                    if (hw_up == 0x0D544E45544E4F43ULL && (hw2 & 0xFFFFDFDFDFDFDFDFULL) == 0x203A4854474E454CULL) has_cl++;
+                    if (hw_up == 0x524546534E415254ULL && (hw2 & 0xDFDFDFDFDFDFDFDFULL) == 0x4E49444F434E450DULL) has_te++;
                 }
                 if ((has_cl != 0U && has_te != 0U) || has_cl > 1U || has_te > 1U) return ZK_VERDICT_BAN;
             }
