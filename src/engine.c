@@ -56,6 +56,27 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
         uint32_t win_inc = rd_be32(l7 + 9) & 0x7FFFFFFFU;
         if (f_len == 4U && (win_inc == 0U || win_inc >= 0x40000000U)) return ZK_VERDICT_BAN;
     }
+    if (proto == 6 && l7_len >= 12) {
+        uint32_t m0 = 0;
+        memcpy(&m0, l7, sizeof(m0));
+        uint32_t is_http = (uint32_t)(m0 == 0x20544547U) | (uint32_t)(m0 == 0x54534F50U) |
+                           (uint32_t)(m0 == 0x44414548U) | (uint32_t)(m0 == 0x20545550U);
+        if (is_http != 0U) {
+            size_t end = (l7_len - 4U < 96U) ? (l7_len - 4U) : 96U;
+            uint32_t bad = 0U;
+            for (size_t off = 4U; off <= end; off++) {
+                uint32_t w = 0;
+                memcpy(&w, l7 + off, sizeof(w));
+                uint8_t b0 = (uint8_t)(w & 0xFFU);
+                if (b0 == 0x0DU || b0 == 0x0AU) break;
+                uint32_t hit_semi = (uint32_t)(w == 0x2F3B2E2EU);
+                uint32_t hit_slash = (uint32_t)((w & 0x00FFFFFFU) == 0x002F2E2EU);
+                uint32_t hit_nul = (uint32_t)(((w - 0x01010101U) & ~w & 0x80808080U) != 0U);
+                bad |= hit_semi | hit_slash | hit_nul;
+            }
+            if (bad != 0U) return ZK_VERDICT_BAN;
+        }
+    }
     return ZK_VERDICT_PASS;
 }
 
