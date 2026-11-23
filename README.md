@@ -51,3 +51,15 @@ Run a full end-to-end verification (build, unit tests, isolated `netns` `BPF_LIN
 ```bash
 sudo ./tools/demo_audit_30s.sh
 ```
+
+## Single-Core L1 Microbenchmark (Intel Core i5-4590 Haswell @ 3.30 GHz)
+
+Reproducible single-core (`taskset -c 1`) measurement of `zk_inspect_packet()` over full L2–L7 inspection (Ethernet/IPv4/TCP + SWAR HTTP/URI normalization & `..;/` traversal detection):
+
+```text
+$BENCH_OUT
+
+```
+
+- **Zero dynamic allocations** on the hot path (`L1i` resident).
+- **Verified clean** under `AddressSanitizer`, `UndefinedBehaviorSanitizer`, `gcc -fanalyzer`, and 1,000,000 adversarial fuzz packets.
