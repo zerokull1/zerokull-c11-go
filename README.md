@@ -76,3 +76,10 @@ Every build of `src/engine.c` and `cmd/zerokull-ctl` is verified against memory-
   - **1,000,000** randomized & malformed packets (`0..1518 B`) + **62,500** random millicode programs.
   - **47/47** adversarial overflow, shifted-offset (`1..280 B`), `1300 B` newline-bomb, and NUL/SQLi/traversal injection vectors.
   - Go control plane verified race-free via `go test -race -count=1 ./...`.
+
+## Scope & Non-Goals (Architectural Boundaries)
+
+This engine is intentionally designed as a **deterministic L2–L7 perimeter gate and protocol normalizer**, not a full-stream antivirus or deep file-carving proxy:
+
+- **In Scope (L1i / XDP Hot-Path, ~25–39 cycles/pkt):** Line-rate L3/L4 anomaly drop, branchless SWAR/SIMD normalization (`CL+TE` HTTP smuggling, mixed-case URI traversal `..;/`, HTTP/2 header bombs, stateless `UDP/443` QUIC fallback to TLS 1.3), and zero-allocation IP quarantine.
+- **Explicit Non-Goals (ICAP / Application / Endpoint Layers):** No full TCP stream reassembly, no file carving, and no ZIP/PDF/ELF unpacking or YARA payload scanning inside the privileged perimeter path.
