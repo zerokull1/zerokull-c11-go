@@ -5,8 +5,17 @@ CC      ?= gcc
 CLANG   ?= clang
 BPFTOOL ?= bpftool
 ARCH    := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
-CFLAGS  := -O3 -std=c11 -Wall -Wextra -Werror -Iinclude -Ibuild
-LDFLAGS := $(shell pkg-config --libs libbpf) -lelf -lz
+
+OPT_FLAGS := -O3 -flto=auto -fno-plt -fno-semantic-interposition \
+             -fno-asynchronous-unwind-tables -fomit-frame-pointer \
+             -ffunction-sections -fdata-sections
+ifeq ($(NATIVE),1)
+OPT_FLAGS += -march=native -mtune=native
+endif
+
+CFLAGS   := $(OPT_FLAGS) -std=c11 -Wall -Wextra -Werror -Iinclude -Ibuild
+BIN_LD   := -Wl,--gc-sections -s
+LDFLAGS  := $(BIN_LD) $(shell pkg-config --libs libbpf) -lelf -lz
 
 .PHONY: all clean test install uninstall
 
@@ -28,13 +37,13 @@ build/zerokull-daemon: src/daemon.c src/engine.c include/zerokull.h build/xdp_gu
 	$(CC) $(CFLAGS) src/daemon.c src/engine.c -o $@ $(LDFLAGS)
 
 build/zerokull-stat: src/stat.c include/zerokull.h | build
-	$(CC) $(CFLAGS) src/stat.c -o $@
+	$(CC) $(CFLAGS) src/stat.c -o $@ $(BIN_LD)
 
 build/zerokull-ctl: cmd/zerokull-ctl/main.go go.mod | build
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o $@ ./cmd/zerokull-ctl
 
 build/test_suite: tests/test_suite.c src/engine.c include/zerokull.h | build
-	$(CC) $(CFLAGS) tests/test_suite.c src/engine.c -o $@
+	$(CC) $(CFLAGS) tests/test_suite.c src/engine.c -o $@ $(BIN_LD)
 
 test: build/test_suite
 	./build/test_suite
