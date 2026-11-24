@@ -71,6 +71,10 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
         return XDP_DROP;
     }
 
+    if (iph->protocol == 132 || iph->protocol == 33 || iph->protocol == 47 || iph->protocol == 21) {
+        if (st) st->xdp_drops++;
+        return XDP_DROP;
+    }
     __u32 src_ip = iph->saddr;
     if (bpf_map_lookup_elem(&blacklist_map, &src_ip)) { if (st) st->xdp_drops++; return XDP_DROP; }
     if (bpf_map_lookup_elem(&whitelist_map, &src_ip)) return XDP_PASS;

@@ -189,6 +189,9 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     if (v != ZK_VERDICT_PASS) { ctx->total_inspected++; ctx->total_drops++; return v; }
 
     uint8_t proto = *(ip + 9);
+    if (proto == 132U || proto == 33U || proto == 47U || proto == 21U) {
+        ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP;
+    }
     const uint8_t *l4 = ip + 20;
     size_t l4_avail = ip_avail - 20;
     uint16_t dport = 0; uint8_t tcp_flags = 0; const uint8_t *l7 = NULL; size_t l7_len = 0; uint32_t ports_word = 0;

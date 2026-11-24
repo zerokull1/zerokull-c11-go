@@ -84,6 +84,8 @@ int main(void) {
         uint32_t bip = 0;
         if (zk_inspect_packet(&ctx, pkt_trav, sizeof(pkt_trav), &bip) != ZK_VERDICT_BAN) return 91;
     }
+    uint8_t sctp_pkt[64] = {0}; sctp_pkt[12]=0x08; sctp_pkt[14]=0x45; sctp_pkt[17]=40; sctp_pkt[22]=64; sctp_pkt[23]=132; sctp_pkt[26]=10; sctp_pkt[30]=10;
+    assert(zk_inspect_packet(&ctx, sctp_pkt, sizeof(sctp_pkt), &sip) == ZK_VERDICT_DROP);
     printf("[TEST PASS] inspected=%llu drops=%llu bans=%llu\n",
            (unsigned long long)ctx.total_inspected,
            (unsigned long long)ctx.total_drops,
