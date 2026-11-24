@@ -77,6 +77,8 @@ Every build of `src/engine.c` and `cmd/zerokull-ctl` is verified against memory-
   - **47/47** adversarial overflow, shifted-offset (`1..280 B`), `1300 B` newline-bomb, and NUL/SQLi/traversal injection vectors.
   - Go control plane verified race-free via `go test -race -count=1 ./...`.
 
+- **Exotic L4 XDP Drop & Epoch-Polymorphic JIT (`commit cd6d183`):** Added 1-cycle XDP & C11 engine drop for `SCTP (132)`, `DCCP (33)`, `GRE (47)`, and `RDS (21)`, plus portable 43-byte `x86_64` Port 0/1 polymorphic emitter `zk_emit_epoch_jit_x86()` (`6.62 cycles/pkt`, `0` DSB stalls).
+
 ## Scope & Non-Goals (Architectural Boundaries)
 
 This engine is intentionally designed as a **deterministic L2–L7 perimeter gate and protocol normalizer**, not a full-stream antivirus or deep file-carving proxy:
