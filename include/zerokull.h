@@ -16,6 +16,10 @@
 
 enum zk_verdict { ZK_VERDICT_PASS = 0, ZK_VERDICT_DROP = 1, ZK_VERDICT_BAN = 2 };
 
+static inline enum zk_verdict zk_effective_verdict(enum zk_verdict v, bool shadow_mode) {
+    return shadow_mode ? ZK_VERDICT_PASS : v;
+}
+
 struct zk_pkt_event {
     uint32_t wire_len;
     uint32_t cap_len;
@@ -65,6 +69,8 @@ struct zk_shm_telemetry {
     uint64_t inspected;
     uint64_t drops;
     uint64_t bans;
+    uint32_t shadow_mode;
+    uint32_t _reserved;
 };
 
 #endif

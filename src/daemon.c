@@ -32,6 +32,7 @@ struct app_ctx {
     int stats_fd;
     unsigned int ncpus;
     struct zk_xdp_stats *cpu_stats;
+    bool shadow_mode;
 };
 
 static void on_signal(int sig) { (void)sig; g_stop = 1; }
@@ -89,7 +90,8 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
     if (data_sz < offsetof(struct zk_pkt_event, data) + (size_t)ev->cap_len) return 0;
 
     uint32_t src_ip = 0;
-    if (zk_inspect_packet(&app->engine, ev->data, ev->cap_len, &src_ip) == ZK_VERDICT_BAN && src_ip != 0) {
+    enum zk_verdict raw_v = zk_inspect_packet(&app->engine, ev->data, ev->cap_len, &src_ip);
+    if (raw_v == ZK_VERDICT_BAN && src_ip != 0 && !app->shadow_mode) {
         uint8_t one = 1;
         bpf_map_update_elem(app->blacklist_fd, &src_ip, &one, BPF_ANY);
         bpf_map_delete_elem(app->whitelist_fd, &src_ip);
@@ -99,14 +101,21 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
 
 int main(int argc, char **argv) {
     bool all_ports = true;
+    bool shadow_mode = false;
     unsigned int single_idx = 0;
     const char *mode_label = "ALL-PORTS-MESH (1..1024 NICs)";
 
-    if (argc > 1 && strcmp(argv[1], "all") != 0 && strcmp(argv[1], "--all") != 0) {
-        all_ports = false;
-        mode_label = argv[1];
-        single_idx = if_nametoindex(mode_label);
-        if (single_idx == 0 || single_idx >= ZK_MAX_PORTS) { perror("if_nametoindex"); return 1; }
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--shadow") == 0 || strcmp(argv[i], "-s") == 0) {
+            shadow_mode = true;
+        } else if (strcmp(argv[i], "all") == 0 || strcmp(argv[i], "--all") == 0) {
+            all_ports = true;
+        } else {
+            all_ports = false;
+            mode_label = argv[i];
+            single_idx = if_nametoindex(mode_label);
+            if (single_idx == 0 || single_idx >= ZK_MAX_PORTS) { perror("if_nametoindex"); return 1; }
+        }
     }
 
     struct sigaction sa = { .sa_handler = on_signal };
@@ -114,8 +123,14 @@ int main(int argc, char **argv) {
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
 
-    struct xdp_guard_bpf *skel = xdp_guard_bpf__open_and_load();
-    if (!skel) { fprintf(stderr, "open_and_load failed\n"); return 1; }
+    struct xdp_guard_bpf *skel = xdp_guard_bpf__open();
+    if (!skel) { fprintf(stderr, "xdp_guard_bpf__open failed\n"); return 1; }
+    skel->rodata->shadow_mode = shadow_mode ? 1 : 0;
+    if (xdp_guard_bpf__load(skel) != 0) {
+        fprintf(stderr, "xdp_guard_bpf__load failed\n");
+        xdp_guard_bpf__destroy(skel);
+        return 1;
+    }
 
     struct bpf_link **links = calloc(ZK_MAX_PORTS, sizeof(struct bpf_link *));
     if (!links) { xdp_guard_bpf__destroy(skel); return 1; }
@@ -147,6 +162,7 @@ int main(int argc, char **argv) {
                 shm->pid = (uint32_t)getpid();
                 shm->start_ts = (uint64_t)time(NULL);
                 shm->inspected = 0; shm->drops = 0; shm->bans = 0;
+                shm->shadow_mode = shadow_mode ? 1U : 0U; shm->_reserved = 0U;
                 __sync_synchronize();
                 shm->magic = ZK_SHM_MAGIC;
             }
@@ -165,6 +181,7 @@ int main(int argc, char **argv) {
     app.stats_fd     = bpf_map__fd(skel->maps.stats_map);
     app.ncpus        = ncpus;
     app.cpu_stats    = calloc(ncpus, sizeof(struct zk_xdp_stats));
+    app.shadow_mode  = shadow_mode;
 
     struct ring_buffer *rb = ring_buffer__new(bpf_map__fd(skel->maps.ringbuf_map), handle_event, &app, NULL);
     if (!rb) {
@@ -177,8 +194,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    printf("[zerokull] active on %s (attached_nics=%u, mode=BPF_LINK_XDP, shm=/dev/shm%s)\n",
-           mode_label, attached, ZK_SHM_NAME);
+    printf("[zerokull] active on %s (attached_nics=%u, mode=%s, shm=/dev/shm%s)\n",
+           mode_label, attached, shadow_mode ? "SHADOW_DROP(DRY-RUN)" : "BPF_LINK_XDP_ENFORCE", ZK_SHM_NAME);
     fflush(stdout);
     while (!g_stop) {
         if (ring_buffer__poll(rb, 100) < 0 && errno != EINTR) break;

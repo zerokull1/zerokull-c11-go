@@ -85,7 +85,11 @@ int main(void) {
         if (zk_inspect_packet(&ctx, pkt_trav, sizeof(pkt_trav), &bip) != ZK_VERDICT_BAN) return 91;
     }
     uint8_t sctp_pkt[64] = {0}; sctp_pkt[12]=0x08; sctp_pkt[14]=0x45; sctp_pkt[17]=40; sctp_pkt[22]=64; sctp_pkt[23]=132; sctp_pkt[26]=10; sctp_pkt[30]=10;
-    assert(zk_inspect_packet(&ctx, sctp_pkt, sizeof(sctp_pkt), &sip) == ZK_VERDICT_DROP);
+    enum zk_verdict sctp_v = zk_inspect_packet(&ctx, sctp_pkt, sizeof(sctp_pkt), &sip);
+    assert(sctp_v == ZK_VERDICT_DROP);
+    assert(zk_effective_verdict(sctp_v, true) == ZK_VERDICT_PASS);
+    assert(zk_effective_verdict(ZK_VERDICT_BAN, true) == ZK_VERDICT_PASS);
+    assert(zk_effective_verdict(sctp_v, false) == ZK_VERDICT_DROP);
     uint32_t c0 = 0, c1 = 0;
     uint8_t jit0[64] = {0}, jit1[64] = {0};
     assert(zk_emit_epoch_jit_x86(jit0, 42U, 0, &c0) == 0U);

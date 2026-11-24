@@ -11,6 +11,14 @@
 
 #define ZK_MAX_PKT_LEN 1536U
 
+/* Set via libbpf .rodata prior to load: 0 = ENFORCE (XDP_DROP), 1 = SHADOW_DROP (XDP_PASS + count) */
+volatile const __u8 shadow_mode = 0;
+
+#define ZK_DROP_ACTION(st) do { \
+    if (st) (st)->xdp_drops++; \
+    return shadow_mode ? XDP_PASS : XDP_DROP; \
+} while (0)
+
 struct zk_vlan_hdr { __be16 h_vlan_TCI; __be16 h_vlan_encapsulated_proto; };
 struct zk_pkt_event { __u32 wire_len; __u32 cap_len; __u32 ingress_ifindex; __u32 _pad; __u8 data[ZK_MAX_PKT_LEN]; };
 struct zk_xdp_stats { __u64 rx_packets; __u64 xdp_drops; __u64 ringbuf_sent; __u64 ringbuf_drops; };
@@ -47,10 +55,9 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
     // [Уязвимость #1 закрыта] Инспекция IPv6 (ETH_P_IPV6): отсекаем HopLimit=0/65/129, IPv6 Fragment (44) и RA/Redirect спуфинг
     if (h_proto == bpf_htons(ETH_P_IPV6)) {
         struct ipv6hdr *ip6 = nh;
-        if ((void *)(ip6 + 1) > data_end) { if (st) st->xdp_drops++; return XDP_DROP; }
+        if ((void *)(ip6 + 1) > data_end) { ZK_DROP_ACTION(st); }
         if (ip6->version != 6 || ip6->hop_limit == 0 || ip6->hop_limit == 65 || ip6->hop_limit == 129 || ip6->nexthdr == 44) {
-            if (st) st->xdp_drops++;
-            return XDP_DROP;
+            ZK_DROP_ACTION(st);
         }
         return XDP_PASS;
     }
@@ -67,16 +74,14 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
         iph->ttl == 0 || iph->ttl == 65 || iph->ttl == 129 ||
         (iph->frag_off & bpf_htons(0x3FFF)) != 0 ||
         src_host == 0U || src_host == 0xFFFFFFFFU || (src_host & 0xFF000000U) == 0x7F000000U) {
-        if (st) st->xdp_drops++;
-        return XDP_DROP;
+        ZK_DROP_ACTION(st);
     }
 
     if (iph->protocol == 132 || iph->protocol == 33 || iph->protocol == 47 || iph->protocol == 21) {
-        if (st) st->xdp_drops++;
-        return XDP_DROP;
+        ZK_DROP_ACTION(st);
     }
     __u32 src_ip = iph->saddr;
-    if (bpf_map_lookup_elem(&blacklist_map, &src_ip)) { if (st) st->xdp_drops++; return XDP_DROP; }
+    if (bpf_map_lookup_elem(&blacklist_map, &src_ip)) { ZK_DROP_ACTION(st); }
     if (bpf_map_lookup_elem(&whitelist_map, &src_ip)) return XDP_PASS;
 
     __u64 wire_len = (__u64)((long)data_end - (long)data);
