@@ -59,6 +59,12 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
         if (ip6->version != 6 || ip6->hop_limit == 0 || ip6->hop_limit == 65 || ip6->hop_limit == 129 || ip6->nexthdr == 44) {
             ZK_DROP_ACTION(st);
         }
+        if (ip6->nexthdr == 0 || ip6->nexthdr == 60) {
+            struct ipv6_opt_hdr *opt = (void *)(ip6 + 1);
+            if ((void *)(opt + 1) > data_end || opt->hdrlen > 2) {
+                ZK_DROP_ACTION(st);
+            }
+        }
         return XDP_PASS;
     }
 

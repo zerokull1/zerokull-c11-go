@@ -51,6 +51,11 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
             return ZK_VERDICT_DROP;
         }
     }
+    if (proto == 6 && l7_len >= 5 && *(l7 + 0) == 0x17) {
+        uint16_t ver = rd_be16(l7 + 1);
+        uint16_t rec_len = rd_be16(l7 + 3);
+        if (ver == 0x0303 && rec_len < 16U) return ZK_VERDICT_DROP;
+    }
     if (proto == 6 && (dport == 80 || dport == 8080) && l7_len >= 13 && *(l7 + 3) == 0x08) {
         uint32_t f_len = (rd_be32(l7) >> 8) & 0x00FFFFFFU;
         uint32_t win_inc = rd_be32(l7 + 9) & 0x7FFFFFFFU;

@@ -96,6 +96,17 @@ int main(void) {
     assert(zk_emit_epoch_jit_x86(jit0, sizeof(jit0), 0, &c0) == 43U);
     assert(zk_emit_epoch_jit_x86(jit1, sizeof(jit1), 1, &c1) == 43U);
     assert(c0 != c1 && jit0[1] == 0x31U && jit1[1] == 0x29U);
+    {
+        uint8_t tls17_micro[60] = {
+            0,0,0,0,0,1, 0,0,0,0,0,2, 0x08,0x00,
+            0x45,0x00, 0x00,0x2e, 0,1, 0,0, 64, 6, 0,0,
+            10,0,0,77, 10,0,0,1,
+            0x1f,0x90, 0x01,0xbb, 0,0,0,1, 0,0,0,1, 0x50,0x18, 0x20,0x00, 0,0, 0,0,
+            0x17, 0x03, 0x03, 0x00, 0x04, 0xaa
+        };
+        uint32_t tip = 0;
+        assert(zk_inspect_packet(&ctx, tls17_micro, sizeof(tls17_micro), &tip) == ZK_VERDICT_DROP);
+    }
     printf("[TEST PASS] inspected=%llu drops=%llu bans=%llu\n",
            (unsigned long long)ctx.total_inspected,
            (unsigned long long)ctx.total_drops,
