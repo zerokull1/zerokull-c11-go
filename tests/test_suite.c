@@ -86,16 +86,12 @@ int main(void) {
     }
     uint8_t sctp_pkt[64] = {0}; sctp_pkt[12]=0x08; sctp_pkt[14]=0x45; sctp_pkt[17]=40; sctp_pkt[22]=64; sctp_pkt[23]=132; sctp_pkt[26]=10; sctp_pkt[30]=10;
     assert(zk_inspect_packet(&ctx, sctp_pkt, sizeof(sctp_pkt), &sip) == ZK_VERDICT_DROP);
-    uint64_t j0_buf = 0, j1_buf = 0; uint8_t *j0 = (uint8_t *)&j0_buf, *j1 = (uint8_t *)&j1_buf;
-    uint8_t tmp0 = 0, tmp1 = 0; uint32_t c0 = 0, c1 = 0;
-    (void)tmp0; (void)tmp1;
-    uint8_t buf0_a = 0, buf0_b = 0;
-    uint64_t a0 = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0, a7 = 0;
-    uint64_t b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, b7 = 0;
-    (void)a1;(void)a2;(void)a3;(void)a4;(void)a5;(void)a6;(void)a7;(void)b1;(void)b2;(void)b3;(void)b4;(void)b5;(void)b6;(void)b7;(void)buf0_a;(void)buf0_b;(void)j0;(void)j1;
-    assert(zk_emit_epoch_jit_x86((uint8_t *)&a0, 64U, 0, &c0) == 43U);
-    assert(zk_emit_epoch_jit_x86((uint8_t *)&b0, 64U, 1, &c1) == 43U);
-    assert(c0 != c1 && *((uint8_t *)&a0 + 1) == 0x31U && *((uint8_t *)&b0 + 1) == 0x29U);
+    uint32_t c0 = 0, c1 = 0;
+    uint8_t jit0[64] = {0}, jit1[64] = {0};
+    assert(zk_emit_epoch_jit_x86(jit0, 42U, 0, &c0) == 0U);
+    assert(zk_emit_epoch_jit_x86(jit0, sizeof(jit0), 0, &c0) == 43U);
+    assert(zk_emit_epoch_jit_x86(jit1, sizeof(jit1), 1, &c1) == 43U);
+    assert(c0 != c1 && jit0[1] == 0x31U && jit1[1] == 0x29U);
     printf("[TEST PASS] inspected=%llu drops=%llu bans=%llu\n",
            (unsigned long long)ctx.total_inspected,
            (unsigned long long)ctx.total_drops,
