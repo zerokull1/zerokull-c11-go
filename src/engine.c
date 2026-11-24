@@ -240,3 +240,30 @@ enum zk_verdict zk_exec_millicode(const uint16_t *code, size_t n_insns, const ui
     }
     return (r[0] <= (uint32_t)ZK_VERDICT_BAN) ? (enum zk_verdict)r[0] : ZK_VERDICT_DROP;
 }
+
+
+static uint32_t zk_crc32c_sw(const uint8_t *buf, size_t len) {
+    uint32_t crc = 0x5A45524FU;
+    for (size_t i = 0; i < len; i++) {
+        crc ^= buf[i];
+        for (int k = 0; k < 8; k++) crc = (crc >> 1) ^ (0x82F63B78U & (0U - (crc & 1U)));
+    }
+    return crc;
+}
+
+size_t zk_emit_epoch_jit_x86(uint8_t *dst, size_t cap, uint32_t epoch_id, uint32_t *out_crc) {
+    if (!dst || cap < 43U) return 0;
+    size_t p = 0;
+    uint32_t variant = epoch_id & 3U;
+    if ((variant & 1U) == 0U) { *(dst + p++) = 0x4DU; *(dst + p++) = 0x31U; *(dst + p++) = 0xC0U; }
+    else                       { *(dst + p++) = 0x4DU; *(dst + p++) = 0x29U; *(dst + p++) = 0xC0U; }
+    const char *head   = "\x66\x48\x0F\x6E\xC7\x66\x0F\x6F\x0A";
+    const char *body_a = "\xF2\x4C\x0F\x38\xF1\xC7\x66\x0F\x38\xDC\xC1\xF2\x4C\x0F\x38\xF1\xC6\x66\x0F\x38\xDC\xC1";
+    const char *body_b = "\x66\x0F\x38\xDC\xC1\xF2\x4C\x0F\x38\xF1\xC7\x66\x0F\x38\xDC\xC1\xF2\x4C\x0F\x38\xF1\xC6";
+    const char *tail   = "\x66\x48\x0F\x7E\xC0\x4C\x31\xC0\xC3";
+    memcpy(dst + p, head, 9U); p += 9U;
+    memcpy(dst + p, (variant < 2U) ? body_a : body_b, 22U); p += 22U;
+    memcpy(dst + p, tail, 9U); p += 9U;
+    if (out_crc) *out_crc = zk_crc32c_sw(dst, p);
+    return p;
+}

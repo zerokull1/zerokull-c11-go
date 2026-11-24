@@ -52,6 +52,8 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
 
 enum zk_verdict zk_exec_millicode(const uint16_t *code, size_t n_insns, const uint8_t *pkt, size_t len, enum zk_verdict base_v);
 
+size_t zk_emit_epoch_jit_x86(uint8_t *dst, size_t cap, uint32_t epoch_id, uint32_t *out_crc);
+
 #define ZK_SHM_NAME "/zerokull_stats"
 #define ZK_SHM_MAGIC 0x5A45524F4B554C4CULL
 
