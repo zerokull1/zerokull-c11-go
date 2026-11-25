@@ -120,3 +120,4 @@ Once upstream peers and internal gateways are verified clean, remove `--shadow-d
 - **RFC 9000 Zero-QUIC & Full-Stack Audit**: Validated across 51 adversarial vectors spanning UEFI Pre-OS, VT-d IOMMU DMA, eBPF XDP, RFC 793 TCP FSM, RFC 9000 QUIC, and L7/HTTP2 semantic gates.
 - **RFC 793 Tarpit & 58-Vector Parity**: Synchronized with anti-RST-storm `SYN+ACK` tarpit, `max_cap` bounds checks, and Land reflection drop across **58 audited vectors**.
 - **Pulse Barrier W^X & 64-Vector Parity**: Synchronized with bounded `W^X` capsule loading and idempotent `PROT_NONE` fail-close across **64 audited vectors**.
+- **Core #3 L1d Eviction Guard & 64-Vector Parity**: Synchronized with `0600 O_NOFOLLOW` Core #3 telemetry, min-64 `RDTSCP` calibration, and `clflush` cryo-eviction across **64 audited vectors**.
