@@ -9,7 +9,20 @@ static inline uint16_t rd_be16(const uint8_t *p) { return (uint16_t)(((uint16_t)
 static inline uint32_t rd_be32(const uint8_t *p) {
     return ((uint32_t)(*(p + 0)) << 24) | ((uint32_t)(*(p + 1)) << 16) | ((uint32_t)(*(p + 2)) << 8) | (uint32_t)(*(p + 3));
 }
-static inline uint64_t rd_le64(const uint8_t *p) { uint64_t v = 0; memcpy(&v, p, sizeof(v)); return v; }
+static inline uint32_t rd_le32(const uint8_t *p) {
+    uint32_t v = 0; memcpy(&v, p, sizeof(v));
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    v = __builtin_bswap32(v);
+#endif
+    return v;
+}
+static inline uint64_t rd_le64(const uint8_t *p) {
+    uint64_t v = 0; memcpy(&v, p, sizeof(v));
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    v = __builtin_bswap64(v);
+#endif
+    return v;
+}
 
 static inline uint32_t zk_crc32c_u32(uint32_t crc, uint32_t v) {
 #if defined(__x86_64__) && defined(__SSE4_2__)
@@ -63,8 +76,7 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
     }
     if (proto == 17 && (dport == 443 || dport == 8443)) return ZK_VERDICT_DROP;
     if (proto == 6 && l7_len >= 12) {
-        uint32_t m0 = 0;
-        memcpy(&m0, l7, sizeof(m0));
+        uint32_t m0 = rd_le32(l7);
         uint32_t m0_up = m0 & 0xDFDFDFDFU;
         uint32_t is_http = (uint32_t)((m0_up & 0x00FFFFFFU) == 0x00544547U && (m0 >> 24) == 0x20U) |
                            (uint32_t)(m0_up == 0x54534F50U) |
@@ -74,8 +86,7 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
             size_t end = (l7_len - 4U < 96U) ? (l7_len - 4U) : 96U;
             uint32_t bad = 0U;
             for (size_t off = 4U; off <= end; off++) {
-                uint32_t w = 0;
-                memcpy(&w, l7 + off, sizeof(w));
+                uint32_t w = rd_le32(l7 + off);
                 uint8_t b0 = (uint8_t)(w & 0xFFU);
                 if (b0 == 0x0DU || b0 == 0x0AU) break;
                 uint32_t hit_semi = (uint32_t)(w == 0x2F3B2E2EU);
@@ -90,9 +101,7 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
                 for (size_t h = 4U; h <= scan_lim; h++) {
                     if (*(l7 + h - 1U) != 0x0AU) continue;
                     if (*(l7 + h) == 0x0DU || *(l7 + h) == 0x0AU) break;
-                    uint64_t hw = 0, hw2 = 0;
-                    memcpy(&hw, l7 + h, sizeof(hw));
-                    memcpy(&hw2, l7 + h + 8U, sizeof(hw2));
+                    uint64_t hw = rd_le64(l7 + h), hw2 = rd_le64(l7 + h + 8U);
                     uint64_t hw_up = hw & 0xDFDFDFDFDFDFDFDFULL;
                     if (hw_up == 0x0D544E45544E4F43ULL && (hw2 & 0xFFFFDFDFDFDFDFDFULL) == 0x203A4854474E454CULL) has_cl++;
                     if (hw_up == 0x524546534E415254ULL && (hw2 & 0xDFDFDFDFDFDFDFDFULL) == 0x4E49444F434E450DULL) has_te++;
@@ -257,6 +266,10 @@ static uint32_t zk_crc32c_sw(const uint8_t *buf, size_t len) {
 }
 
 size_t zk_emit_epoch_jit_x86(uint8_t *dst, size_t cap, uint32_t epoch_id, uint32_t *out_crc) {
+#if !defined(__x86_64__) && !defined(_M_X64)
+    (void)dst; (void)cap; (void)epoch_id; (void)out_crc;
+    return 0;
+#else
     if (!dst || cap < 43U) return 0;
     size_t p = 0;
     uint32_t variant = epoch_id & 3U;
@@ -272,3 +285,5 @@ size_t zk_emit_epoch_jit_x86(uint8_t *dst, size_t cap, uint32_t epoch_id, uint32
     if (out_crc) *out_crc = zk_crc32c_sw(dst, p);
     return p;
 }
+
+#endif
