@@ -33,14 +33,19 @@ build/xdp_guard.bpf.o: bpf/xdp_guard.bpf.c | build
 build/xdp_guard.skel.h: build/xdp_guard.bpf.o
 	$(BPFTOOL) gen skeleton $< > $@
 
-build/zerokull-daemon: src/daemon.c src/engine.c src/policy.c include/zerokull.h include/zk_policy.h build/xdp_guard.skel.h
-	$(CC) $(CFLAGS) src/daemon.c src/engine.c src/policy.c -o $@ $(LDFLAGS)
+build/libzk_policy_rs.a: rust_ctrl/Cargo.toml rust_ctrl/src/lib.rs | build
+	cargo build --release --manifest-path rust_ctrl/Cargo.toml
+	cp rust_ctrl/target/release/libzk_policy_rs.a $@
+
+build/zerokull-daemon: src/daemon.c src/engine.c build/libzk_policy_rs.a include/zerokull.h include/zk_policy.h build/xdp_guard.skel.h
+	$(CC) $(CFLAGS) src/daemon.c src/engine.c build/libzk_policy_rs.a -o $@ $(LDFLAGS)
 
 build/zerokull-stat: src/stat.c include/zerokull.h | build
 	$(CC) $(CFLAGS) src/stat.c -o $@ $(BIN_LD)
 
-build/zero-tui: src/tui.c include/zerokull.h | build
-	$(CC) $(CFLAGS) src/tui.c -o $@ $(BIN_LD)
+build/zero-tui: rust_ctrl/Cargo.toml rust_ctrl/src/bin/zero-tui.rs | build
+	cargo build --release --bin zero-tui --manifest-path rust_ctrl/Cargo.toml
+	cp rust_ctrl/target/release/zero-tui $@
 
 build/zerokull-ctl: cmd/zerokull-ctl/main.go go.mod | build
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o $@ ./cmd/zerokull-ctl
