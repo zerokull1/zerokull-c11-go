@@ -339,3 +339,63 @@ size_t zk_emit_epoch_jit_x86(uint8_t *dst, size_t cap, uint32_t epoch_id, uint32
 }
 
 #endif
+
+static inline uint64_t zk_rdtscp_now(void) {
+#if defined(__x86_64__)
+    uint32_t lo, hi;
+    __asm__ __volatile__("rdtscp\n\tlfence" : "=a"(lo), "=d"(hi) :: "rcx");
+    return ((uint64_t)hi << 32) | lo;
+#else
+    return 0ULL;
+#endif
+}
+
+static inline uint32_t zk_cpuid_sig(void) {
+#if defined(__x86_64__)
+    uint32_t eax, ebx, ecx, edx;
+    __asm__ __volatile__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(1), "c"(0));
+    return eax;
+#else
+    return 0U;
+#endif
+}
+
+void zk_pulse_calibrate_boot(struct zk_hardware_pulse_anchor *a, uint32_t target_batch) {
+    if (!a) return;
+    memset(a, 0, sizeof(*a));
+    a->cpu_sig = zk_cpuid_sig();
+    a->target_batch = target_batch ? target_batch : 32U;
+    uint64_t t0 = zk_rdtscp_now();
+    for (volatile uint32_t i = 0; i < 256U; i++) {}
+    uint64_t t1 = zk_rdtscp_now();
+    uint64_t probe = t1 - t0;
+    uint64_t base = (probe > 0ULL && probe < 200000ULL) ? (probe << 5) : 32000ULL;
+    a->base_pulse_tsc = base;
+    a->current_period_tsc = base;
+    a->last_pulse_tsc = t1;
+    a->realign_epochs = 1ULL;
+}
+
+int zk_pulse_periodic_realign(struct zk_hardware_pulse_anchor *a, uint32_t arrived_pkts) {
+    if (!a) return 0;
+    uint64_t now = zk_rdtscp_now();
+    uint32_t sig = zk_cpuid_sig();
+    if (sig != a->cpu_sig) {
+        a->cpu_sig = sig;
+        a->current_period_tsc = a->base_pulse_tsc;
+        a->last_pulse_tsc = now;
+        a->realign_epochs++;
+        return 1;
+    }
+    if ((now - a->last_pulse_tsc) < a->current_period_tsc && arrived_pkts < a->target_batch) return 0;
+    a->last_pulse_tsc = now;
+    a->realign_epochs++;
+    if (arrived_pkts > a->target_batch) {
+        uint64_t next = a->current_period_tsc - (a->current_period_tsc >> 3);
+        a->current_period_tsc = (next < 2000ULL) ? 2000ULL : next;
+    } else if (arrived_pkts < (a->target_batch >> 1)) {
+        uint64_t next = a->current_period_tsc + (a->current_period_tsc >> 3);
+        a->current_period_tsc = (next > 3300000ULL) ? 3300000ULL : next;
+    }
+    return 1;
+}

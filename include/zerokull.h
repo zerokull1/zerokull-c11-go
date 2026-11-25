@@ -73,4 +73,18 @@ struct zk_shm_telemetry {
     uint32_t _reserved;
 };
 
+
+struct __attribute__((aligned(64))) zk_hardware_pulse_anchor {
+    uint32_t cpu_sig;
+    uint32_t target_batch;
+    uint64_t base_pulse_tsc;
+    uint64_t current_period_tsc;
+    uint64_t last_pulse_tsc;
+    uint64_t realign_epochs;
+    uint64_t _pad[3];
+};
+
+void zk_pulse_calibrate_boot(struct zk_hardware_pulse_anchor *a, uint32_t target_batch);
+int  zk_pulse_periodic_realign(struct zk_hardware_pulse_anchor *a, uint32_t arrived_pkts);
+
 #endif

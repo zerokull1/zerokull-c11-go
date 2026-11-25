@@ -122,6 +122,8 @@ Once upstream peers and internal gateways are verified clean, remove `--shadow-d
 - **Pulse Barrier W^X & 68-Vector Parity**: Synchronized with bounded `W^X` capsule loading and idempotent `PROT_NONE` fail-close across **68 audited vectors**.
 - **Core #3 L1d Eviction Guard & 68-Vector Parity**: Synchronized with `0600 O_NOFOLLOW` Core #3 telemetry, min-64 `RDTSCP` calibration, and `clflush` cryo-eviction across **68 audited vectors**.
 
+- **Master CPU Pulse & Periodic Hardware Re-Align**: 64B-aligned `zk_hardware_pulse_anchor` (`RDTSCP + LFENCE` + `CPUID.01H`) auto-adjusting L1 batching cadence (`>> 3`) across hardware swaps and **68 audited vectors**.
+
 ## Roadmap
 - **Phase 1 [Done]:** 68-vector full-stack hardening + 1B fuzz mutations.
 - **Phase 2 [Next]:** Native `AF_XDP` Zero-Copy UMEM rings & live data-center `TAP/SPAN` radar.
