@@ -172,6 +172,7 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
     uint16_t step_flags = (is_syn ? 1U : 0U) | (is_tls ? 2U : 0U) | ((l7_len >= 16) ? 4U : 0U) | ((!is_syn && is_ack && l7_len == 0) ? 8U : 0U);
 
     if (slot->flow_hash != fid && slot->flow_hash != 0 && slot->pkt_count >= 8U) return ZK_VERDICT_PASS;
+    if (slot->flow_hash != fid && !is_syn && is_ack && l7_len == 0U) return ZK_VERDICT_DROP;
     if (slot->flow_hash != fid || (is_syn && !is_ack)) {
         slot->flow_hash = fid;
         slot->pkt_count = 1;
@@ -251,7 +252,12 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
         if (doff < 20 || l4_avail < doff) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
         memcpy(&ports_word, l4, sizeof(ports_word));
         dport = rd_be16(l4 + 2); tcp_flags = *(l4 + 13); l7 = l4 + doff; l7_len = l4_avail - doff;
-        if (tcp_flags == 0x00U || tcp_flags == 0x01U || (tcp_flags & 0x03U) == 0x03U || (tcp_flags & 0x29U) == 0x29U) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
+        uint16_t urg_ptr = rd_be16(l4 + 18);
+        if (tcp_flags == 0x00U || (tcp_flags & 0x03U) == 0x03U || (tcp_flags & 0x06U) == 0x06U || (tcp_flags & 0x05U) == 0x05U ||
+            ((tcp_flags & 0x29U) != 0U && (tcp_flags & 0x10U) == 0U) ||
+            ((tcp_flags & 0x12U) == 0x02U && l7_len > 0U) ||
+            (urg_ptr != 0U && (tcp_flags & 0x20U) == 0U) ||
+            ((tcp_flags & 0x20U) != 0U && (urg_ptr == 0U || (size_t)urg_ptr > l7_len))) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
     } else if (proto == 17) {
         if (l4_avail < 8) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
         memcpy(&ports_word, l4, sizeof(ports_word));
