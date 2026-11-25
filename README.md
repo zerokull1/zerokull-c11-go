@@ -103,3 +103,16 @@ Instead of stacking per-CVE signatures, `zerokull-c11-go` enforces strict canoni
 - **HTTP/2 & DNS Semantic Gate (`src/engine.c`)**: Blocks HTTP/2 Rapid Reset (`HEADERS` + `RST_STREAM`), `CONTINUATION` Flood (missing `END_HEADERS`), zero/overflow `WINDOW_UPDATE`, DNS tunneling (`label_len >= 48`), and short-body XML/Java deserialization (`rO0A`, `<?xml`, `0xACED0005`).
 - **Browser & East-West Data-Center Quarantine (`bpf/xdp_guard.bpf.c`, `src/engine.c`)**: Drops Gratuitous ARP spoofing, ICMPv6 RA/Redirect (`134`/`137`), unauthorized `RFC1918` East-West traffic, lateral-movement ports (`135`, `137-139`, `445`, `3389`, `5355`, `5985-5986`), `HTTP CONNECT` tunnels, WebSocket smuggling, and `Host:` loopback/link-local DNS rebinding.
 - **Pre-OS to Kernel Continuity**: Designed to attach at `network-pre.target` immediately after UEFI SNP network shutdown (`efi_icosa`), eliminating boot-time DHCP/ARP exposure windows.
+
+### Out-of-Band TAP / SPAN Data-Center Radar (Zero-Risk Deployment)
+Deploy alongside a Top-of-Rack switch or optical TAP to detect compromised neighbors, ORB relays, HTTP/2 Rapid Reset, and East-West lateral movement without touching live traffic:
+```bash
+# 1. Isolate capture NIC (no IP, no ARP, no IPv6, disable GRO/LRO so XDP sees raw wire frames)
+sudo ip addr flush dev eth1 && sudo ip link set dev eth1 arp off promisc on up
+sudo sysctl -w net.ipv6.conf.eth1.disable_ipv6=1
+sudo ethtool -K eth1 gro off lro off tso off gso off
+
+# 2. Attach XDP guard in Shadow-Drop radar mode and watch live anomalies
+sudo ./build/zerokull-xdp -i eth1 --shadow-drop --stats-interval 1
+```
+Once upstream peers and internal gateways are verified clean, remove `--shadow-drop` and move the rack inline at `network-pre.target`.
