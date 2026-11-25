@@ -116,3 +116,4 @@ sudo ethtool -K eth1 gro off lro off tso off gso off
 sudo ./build/zerokull-xdp -i eth1 --shadow-drop --stats-interval 1
 ```
 Once upstream peers and internal gateways are verified clean, remove `--shadow-drop` and move the rack inline at `network-pre.target`.
+- **Strict RFC 793 & Nmap Stealth Shield**: Drops `NULL`, `Xmas`, `SYN+FIN`, `SYN+RST`, `FIN+RST`, `SYN`-with-payload, out-of-bounds `URG` pointers, and stateless `ACK` probes directly in XDP before the kernel emits `RST`.

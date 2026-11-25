@@ -6,6 +6,7 @@
 #include <linux/if_ether.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
+#include <linux/tcp.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
@@ -101,6 +102,17 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
 
     if (iph->protocol == 132 || iph->protocol == 33 || iph->protocol == 47 || iph->protocol == 21) {
         ZK_DROP_ACTION(st);
+    }
+    if (iph->protocol == 6) {
+        struct tcphdr *tcph = (void *)(iph + 1);
+        if ((void *)(tcph + 1) > data_end || tcph->doff < 5) { ZK_DROP_ACTION(st); }
+        __u8 fl = ((__u8 *)tcph)[13];
+        __u16 urg = bpf_ntohs(tcph->urg_ptr);
+        if (fl == 0 || (fl & 0x03) == 0x03 || (fl & 0x06) == 0x06 || (fl & 0x05) == 0x05 ||
+            ((fl & 0x29) != 0 && (fl & 0x10) == 0) ||
+            (urg != 0 && (fl & 0x20) == 0) || ((fl & 0x20) != 0 && urg == 0)) {
+            ZK_DROP_ACTION(st);
+        }
     }
     __u32 src_ip = iph->saddr;
     if (bpf_map_lookup_elem(&blacklist_map, &src_ip)) { ZK_DROP_ACTION(st); }
