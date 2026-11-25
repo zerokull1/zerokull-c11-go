@@ -52,6 +52,15 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
         }
     }
 
+    // [East-West L2 Guard] Отсекаем Gratuitous ARP и нелегитимные ARP-опкоды от соседей в стойке
+    if (h_proto == bpf_htons(ETH_P_ARP)) {
+        struct { __be16 hrd; __be16 pro; __u8 hln; __u8 pln; __be16 op; __u8 sha[6]; __u32 sip; __u8 tha[6]; __u32 tip; } __attribute__((packed)) *arp = nh;
+        if ((void *)(arp + 1) > data_end) { ZK_DROP_ACTION(st); }
+        __u16 op = bpf_ntohs(arp->op);
+        if ((op != 1 && op != 2) || arp->sip == arp->tip) { ZK_DROP_ACTION(st); }
+        return XDP_PASS;
+    }
+
     // [Уязвимость #1 закрыта] Инспекция IPv6 (ETH_P_IPV6): отсекаем HopLimit=0/65/129, IPv6 Fragment (44) и RA/Redirect спуфинг
     if (h_proto == bpf_htons(ETH_P_IPV6)) {
         struct ipv6hdr *ip6 = nh;
@@ -61,6 +70,10 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
         }
         if (ip6->nexthdr == 132 || ip6->nexthdr == 33 || ip6->nexthdr == 47 || ip6->nexthdr == 21) {
             ZK_DROP_ACTION(st);
+        }
+        if (ip6->nexthdr == 58) {
+            __u8 *icmp6 = (void *)(ip6 + 1);
+            if ((void *)(icmp6 + 1) > data_end || *icmp6 == 134 || *icmp6 == 137) { ZK_DROP_ACTION(st); }
         }
         if (ip6->nexthdr == 0 || ip6->nexthdr == 60) {
             struct ipv6_opt_hdr *opt = (void *)(ip6 + 1);
@@ -92,6 +105,9 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
     __u32 src_ip = iph->saddr;
     if (bpf_map_lookup_elem(&blacklist_map, &src_ip)) { ZK_DROP_ACTION(st); }
     __u8 is_wl = bpf_map_lookup_elem(&whitelist_map, &src_ip) != NULL;
+    // [East-West Rack Quarantine] Соседние серверы из RFC1918 (10/8, 172.16/12, 192.168/16) вне whitelist отсекаются на входе NIC
+    __u8 is_rfc1918 = ((src_host & 0xFF000000U) == 0x0A000000U) || ((src_host & 0xFFF00000U) == 0xAC100000U) || ((src_host & 0xFFFF0000U) == 0xC0A80000U);
+    if (is_rfc1918 && !is_wl) { ZK_DROP_ACTION(st); }
 
     __u64 wire_len = (__u64)((long)data_end - (long)data);
     if (wire_len < 34) return XDP_PASS;

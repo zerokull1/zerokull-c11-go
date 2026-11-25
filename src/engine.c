@@ -50,9 +50,8 @@ static inline enum zk_verdict inspect_l3_guard(const uint8_t *ip, size_t ip_avai
 
 static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, const uint8_t *l7, size_t l7_len) {
     if (!l7 || l7_len == 0) return ZK_VERDICT_PASS;
-    if (dport == 445 && l7_len >= 4) {
-        if (*(l7 + 0) == 0xFF && *(l7 + 1) == 'S' && *(l7 + 2) == 'M' && *(l7 + 3) == 'B') return ZK_VERDICT_BAN;
-        if (!(*(l7 + 0) == 0xFE && *(l7 + 1) == 'S' && *(l7 + 2) == 'M' && *(l7 + 3) == 'B') && *(l7 + 0) != 0x00) return ZK_VERDICT_DROP;
+    if (dport == 135U || (dport >= 137U && dport <= 139U) || dport == 445U || dport == 3389U || dport == 5355U || dport == 5985U || dport == 5986U) {
+        return ZK_VERDICT_BAN;
     }
     if (proto == 6 && (dport == 102 || dport == 502 || dport == 2404) && l7_len < 6) return ZK_VERDICT_DROP;
     if (proto == 6 && l7_len >= 5 && *(l7 + 0) == 0x16) {
