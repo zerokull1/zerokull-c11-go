@@ -93,3 +93,8 @@ Instead of stacking per-CVE signatures, `zerokull-c11-go` enforces strict canoni
 - **L3/L4 Strict Framing:** Enforces canonical IPv4 (`0x45`, zero IP Options against `CVE-2026-98432`), zero fragmentation, `Zero-QUIC` 1-cycle drop on `UDP/443` & `8443` (`CVE-2026-105016`, `CVE-2026-85790`), and blocks `SCTP`/`DCCP`/`GRE`/`RDS`.
 - **SWAR URI Canonicalizer:** Single-pass detection of raw (`../`, `..;/`, `//`, `\`) and URL-encoded (`%2e`, `%2f`, `%5c`, `%00`) path traversal (`CVE-2026-104286`, `CVE-2026-133968`, `CVE-2026-102226`).
 - **HTTP/2 & Serialization Gate:** Enforces 31-bit `WINDOW_UPDATE` bounds (`CVE-2026-123007` NGINX2Root), rejects `CL`/`TE` header conflicts, and blocks unauthenticated XML-RPC / Java serialized payloads (`CVE-2026-129448`).
+
+## Adversarial L7, FSM & XDP Hardening (25.11.2026)
+- **Universal HTTP/1.x & OWS Smuggling Shield (`src/engine.c`)**: Method-agnostic ASCII parser (`DELETE`/`OPTIONS`/`PATCH`/`PROPFIND`), 512B URI traversal window, and RFC 9112 colon-anchored `Content-Length:` / `Transfer-Encoding:` detection without whitespace assumptions.
+- **Jitter-Resilient Drift & Strict TCP FSM**: +/-16B packet-length jitter tolerance against encrypted tunnel padding evasion and `SYN`-gated `FIN` slot reset enforcement.
+- **Kernel XDP Backpressure & IPv6 Parity (`bpf/xdp_guard.bpf.c`)**: 1 MB `BPF_MAP_TYPE_RINGBUF` with fail-safe drop backpressure under flood, continuous L7 inspection for whitelisted IPs, and `SCTP`/`DCCP`/`GRE`/`RDS` filtering on IPv6.
