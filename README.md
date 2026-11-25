@@ -146,3 +146,40 @@ Once upstream peers and internal gateways are verified clean, remove `--shadow-d
 - **Phase 2 [Next]:** Native `AF_XDP` Zero-Copy UMEM rings & live data-center `TAP/SPAN` radar.
 - **Phase 3–4 [Planned]:** Inter-rack `TokamakBus` ban sync & SmartNIC/DPU eBPF offload.
 - **Ring-0 DKMS Parity & 73-Vector Audit**: Synchronized with `zero_timing_ring0` `ENFORCE`-by-default Netfilter hook, `0600` `/proc` telemetry, and `RFC 793` / `RFC 9000` Ring-0 gates across **73 audited vectors**.
+
+## Appliance Operations & Enterprise Integration (Zero-L1i Overhead)
+
+All management, policy reload, SIEM export, and operator radar components run strictly outside the L1i packet inspection path (**0 bytes added to hot-path `.text`**):
+
+### 1. Declarative Policy (`/etc/zeromani/policy.conf`) & Live `SIGHUP` Reload
+Configure perimeter policy without recompiling or restarting the XDP link (`deploy/policy.conf`):
+```ini
+mode = enforce          # enforce | shadow
+cpu_affinity = 2        # optional core pinning
+allow_ip = 10.0.0.10    # trusted IPv4 (whitelist_map)
+deny_ip = 192.0.2.55    # static perimeter block (blacklist_map)
+```
+Apply changes on the fly with zero packet loss:
+```bash
+sudo kill -HUP \$(pidof zerokull-daemon)
+```
+
+### 2. Real-Time SIEM Streaming (Syslog RFC 5424 + ArcSight CEF)
+Stream mitigation and auto-ban deltas over UDP or TCP to **KUMA, RuSIEM, QRadar, or Splunk**:
+```bash
+zerokull-ctl siem udp://10.0.0.50:514
+# Or combined with Prometheus /metrics + JSON API:
+zerokull-ctl serve 127.0.0.1:9109 tcp://10.0.0.50:514
+```
+
+### 3. Headless SSH Operator Radar (`zero-tui`)
+Zero-dependency ANSI console reading `/dev/shm/zerokull_stats` directly over SSH (no X11/OpenGL required, press `[R]` to send `SIGHUP`, `[Q]` to quit):
+```bash
+zero-tui
+```
+
+### 4. SHA-256 Verified Appliance Installation (`deploy/install.sh`)
+Every installation runs `./build/test_suite` and enforces cryptographic `sha256sum -c build/SHA256SUMS.txt` verification before copying binaries to `/usr/local/bin/`:
+```bash
+./deploy/install.sh
+```
