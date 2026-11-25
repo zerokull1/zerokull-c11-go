@@ -96,6 +96,7 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
             if (cu < 'A' || cu > 'Z') break;
         }
         if (uri_start != 0U) {
+            if (uri_start == 8U && (rd_le64(l7) & 0x00DFDFDFDFDFDFDFULL) == 0x005443454E4E4F43ULL) return ZK_VERDICT_BAN;
             size_t end = (l7_len - 4U < 512U) ? (l7_len - 4U) : 512U;
             uint32_t bad = 0U;
             for (size_t off = uri_start; off <= end; off++) {
@@ -114,7 +115,7 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
             if (bad != 0U) return ZK_VERDICT_BAN;
             if (l7_len > 20U) {
                 size_t scan_lim = (l7_len - 18U < 1024U) ? (l7_len - 18U) : 1024U;
-                uint32_t has_cl = 0U, has_te = 0U;
+                uint32_t has_cl = 0U, has_te = 0U, has_upg = 0U;
                 for (size_t h = uri_start; h <= scan_lim; h++) {
                     if (*(l7 + h - 1U) != 0x0AU) continue;
                     if (*(l7 + h) == 0x0DU || *(l7 + h) == 0x0AU) break;
@@ -122,8 +123,15 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
                     uint64_t hw_up = hw & 0xDFDFDFDFDFDFDFDFULL;
                     if (hw_up == 0x0D544E45544E4F43ULL && (hw2 & 0x0000DFDFDFDFDFDFULL) == 0x00004854474E454CULL && *(l7 + h + 14U) == ':') has_cl++;
                     if (hw_up == 0x524546534E415254ULL && (hw2 & 0xDFDFDFDFDFDFDFDFULL) == 0x4E49444F434E450DULL && (*(l7 + h + 16U) & 0xDFU) == 'G' && *(l7 + h + 17U) == ':') has_te++;
+                    if ((hw_up & 0x00FFFFFFFFFFFFFFULL) == 0x0045444152475055ULL && *(l7 + h + 7U) == ':') has_upg++;
+                    if ((hw_up & 0x00000000FFFFFFFFULL) == 0x0000000054534F48ULL && *(l7 + h + 4U) == ':') {
+                        size_t v = h + 5U;
+                        while (v < scan_lim && (*(l7 + v) == ' ' || *(l7 + v) == '	')) v++;
+                        uint64_t hv = rd_le64(l7 + v);
+                        if ((hv & 0xFFFFFFFFULL) == 0x2E373231U || (hv & 0xFFFFFFFFFFFFFFFFULL) == 0x2E3435322E393631ULL || ((hv & 0xDFDFDFDFDFDFDFDFULL) == 0x534F484C41434F4CULL && (*(l7 + v + 8U) & 0xDFU) == 'T')) return ZK_VERDICT_BAN;
+                    }
                 }
-                if ((has_cl != 0U && has_te != 0U) || has_cl > 1U || has_te > 1U) return ZK_VERDICT_BAN;
+                if ((has_cl != 0U && has_te != 0U) || has_cl > 1U || has_te > 1U || (has_upg != 0U && (has_te != 0U || has_cl != 0U))) return ZK_VERDICT_BAN;
                 size_t body_lim = (l7_len - 8U < 1024U) ? (l7_len - 8U) : 1024U;
                 for (size_t b = uri_start; b <= body_lim; b++) {
                     if (rd_le32(l7 + b) == 0x0A0D0A0DU && b + 8U <= l7_len) {
