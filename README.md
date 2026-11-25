@@ -102,3 +102,4 @@ Instead of stacking per-CVE signatures, `zerokull-c11-go` enforces strict canoni
 ### Protocol-Geometry & East-West Rack Quarantine
 - **HTTP/2 & DNS Semantic Gate (`src/engine.c`)**: Blocks HTTP/2 Rapid Reset (`HEADERS` + `RST_STREAM`), `CONTINUATION` Flood (missing `END_HEADERS`), zero/overflow `WINDOW_UPDATE`, DNS tunneling (`label_len >= 48`), and short-body XML/Java deserialization (`rO0A`, `<?xml`, `0xACED0005`).
 - **Browser & East-West Data-Center Quarantine (`bpf/xdp_guard.bpf.c`, `src/engine.c`)**: Drops Gratuitous ARP spoofing, ICMPv6 RA/Redirect (`134`/`137`), unauthorized `RFC1918` East-West traffic, lateral-movement ports (`135`, `137-139`, `445`, `3389`, `5355`, `5985-5986`), `HTTP CONNECT` tunnels, WebSocket smuggling, and `Host:` loopback/link-local DNS rebinding.
+- **Pre-OS to Kernel Continuity**: Designed to attach at `network-pre.target` immediately after UEFI SNP network shutdown (`efi_icosa`), eliminating boot-time DHCP/ARP exposure windows.
