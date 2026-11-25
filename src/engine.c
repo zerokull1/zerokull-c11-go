@@ -76,16 +76,17 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
     }
     if (proto == 17 && (dport == 443 || dport == 8443)) return ZK_VERDICT_DROP;
     if (proto == 6 && l7_len >= 12) {
-        uint32_t m0 = rd_le32(l7);
-        uint32_t m0_up = m0 & 0xDFDFDFDFU;
-        uint32_t is_http = (uint32_t)((m0_up & 0x00FFFFFFU) == 0x00544547U && (m0 >> 24) == 0x20U) |
-                           (uint32_t)(m0_up == 0x54534F50U) |
-                           (uint32_t)(m0_up == 0x44414548U) |
-                           (uint32_t)((m0_up & 0x00FFFFFFU) == 0x00545550U && (m0 >> 24) == 0x20U);
-        if (is_http != 0U) {
-            size_t end = (l7_len - 4U < 96U) ? (l7_len - 4U) : 96U;
+        size_t uri_start = 0U;
+        for (size_t m = 0U; m < 10U && m + 1U < l7_len; m++) {
+            uint8_t c = *(l7 + m);
+            if (c == 0x20U && m >= 3U) { uri_start = m + 1U; break; }
+            uint8_t cu = c & 0xDFU;
+            if (cu < 'A' || cu > 'Z') break;
+        }
+        if (uri_start != 0U) {
+            size_t end = (l7_len - 4U < 512U) ? (l7_len - 4U) : 512U;
             uint32_t bad = 0U;
-            for (size_t off = 4U; off <= end; off++) {
+            for (size_t off = uri_start; off <= end; off++) {
                 uint32_t w = rd_le32(l7 + off);
                 uint8_t b0 = (uint8_t)(w & 0xFFU);
                 if (b0 == 0x0DU || b0 == 0x0AU) break;
@@ -100,15 +101,15 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
             }
             if (bad != 0U) return ZK_VERDICT_BAN;
             if (l7_len > 20U) {
-                size_t scan_lim = (l7_len - 16U < 512U) ? (l7_len - 16U) : 512U;
+                size_t scan_lim = (l7_len - 18U < 1024U) ? (l7_len - 18U) : 1024U;
                 uint32_t has_cl = 0U, has_te = 0U;
-                for (size_t h = 4U; h <= scan_lim; h++) {
+                for (size_t h = uri_start; h <= scan_lim; h++) {
                     if (*(l7 + h - 1U) != 0x0AU) continue;
                     if (*(l7 + h) == 0x0DU || *(l7 + h) == 0x0AU) break;
                     uint64_t hw = rd_le64(l7 + h), hw2 = rd_le64(l7 + h + 8U);
                     uint64_t hw_up = hw & 0xDFDFDFDFDFDFDFDFULL;
-                    if (hw_up == 0x0D544E45544E4F43ULL && (hw2 & 0xFFFFDFDFDFDFDFDFULL) == 0x203A4854474E454CULL) has_cl++;
-                    if (hw_up == 0x524546534E415254ULL && (hw2 & 0xDFDFDFDFDFDFDFDFULL) == 0x4E49444F434E450DULL) has_te++;
+                    if (hw_up == 0x0D544E45544E4F43ULL && (hw2 & 0x0000DFDFDFDFDFDFULL) == 0x00004854474E454CULL && *(l7 + h + 14U) == ':') has_cl++;
+                    if (hw_up == 0x524546534E415254ULL && (hw2 & 0xDFDFDFDFDFDFDFDFULL) == 0x4E49444F434E450DULL && (*(l7 + h + 16U) & 0xDFU) == 'G' && *(l7 + h + 17U) == ':') has_te++;
                 }
                 if ((has_cl != 0U && has_te != 0U) || has_cl > 1U || has_te > 1U) return ZK_VERDICT_BAN;
                 for (size_t b = 4U; b + 8U <= scan_lim; b++) {
@@ -137,11 +138,12 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
     struct zk_flow_slot *slot = &ctx->flows[fid & ZK_FLOW_MASK];
 
     if ((tcp_flags & 0x05U) != 0) {
-        if (slot->flow_hash == fid) {
+        if (slot->flow_hash == fid && (slot->fsm_flags & 1U) != 0) {
             memset(slot, 0, sizeof(*slot));
             slot->ema_popcnt = 64;
+            return ZK_VERDICT_PASS;
         }
-        return ZK_VERDICT_PASS;
+        return ((tcp_flags & 0x04U) != 0) ? ZK_VERDICT_PASS : ZK_VERDICT_DROP;
     }
 
     bool is_syn = (tcp_flags & 0x02U) != 0;
@@ -171,14 +173,16 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
 
     if (l7 && l7_len >= 16) {
         uint16_t cur_len = (uint16_t)(l7_len > 0xFFFF ? 0xFFFF : l7_len);
-        if (slot->last_l7_len == cur_len) {
+        uint16_t diff = (slot->last_l7_len > cur_len) ? (slot->last_l7_len - cur_len) : (cur_len - slot->last_l7_len);
+        if (diff <= 16U) {
             if (slot->same_len_streak < 0xFFFFU) slot->same_len_streak++;
+            slot->last_l7_len = cur_len;
         } else {
             slot->last_l7_len = cur_len;
             slot->same_len_streak = 0;
         }
         uint32_t bits = (uint32_t)(__builtin_popcountll(rd_le64(l7)) + __builtin_popcountll(rd_le64(l7 + 8)));
-        slot->ema_popcnt = (slot->ema_popcnt * 3U + bits) >> 2;
+        slot->ema_popcnt = (slot->pkt_count <= 2U) ? bits : ((slot->ema_popcnt * 3U + bits) >> 2);
         if ((slot->fsm_flags & 2U) == 0 && slot->pkt_count >= 12 && slot->same_len_streak >= 16 && slot->ema_popcnt >= 56 && slot->ema_popcnt <= 72) {
             memset(slot, 0, sizeof(*slot));
             slot->ema_popcnt = 64;
