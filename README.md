@@ -126,6 +126,8 @@ Once upstream peers and internal gateways are verified clean, remove `--shadow-d
 
 - **Host Watchdog v2 & 73-Vector Audit Parity**: Synchronized with zero-allocation `zero-host-guard` (`/proc/[pid]/exe` + `IN_Q_OVERFLOW` + `0600 O_NOFOLLOW`) across **73 audited vectors**.
 
+- **Unified Operator CLI & Live IP Radar Telemetry**: Integrated with `zero-ctl` (SIEM CEF) and `zeromani_hud` v2 real-time XDP/L2 rack isolation console across **73 audited vectors**.
+
 ## Roadmap
 - **Phase 1 [Done]:** 73-vector full-stack hardening + 1B fuzz mutations.
 - **Phase 2 [Next]:** Native `AF_XDP` Zero-Copy UMEM rings & live data-center `TAP/SPAN` radar.
