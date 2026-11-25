@@ -98,3 +98,7 @@ Instead of stacking per-CVE signatures, `zerokull-c11-go` enforces strict canoni
 - **Universal HTTP/1.x & OWS Smuggling Shield (`src/engine.c`)**: Method-agnostic ASCII parser (`DELETE`/`OPTIONS`/`PATCH`/`PROPFIND`), 512B URI traversal window, and RFC 9112 colon-anchored `Content-Length:` / `Transfer-Encoding:` detection without whitespace assumptions.
 - **Jitter-Resilient Drift & Strict TCP FSM**: +/-16B packet-length jitter tolerance against encrypted tunnel padding evasion and `SYN`-gated `FIN` slot reset enforcement.
 - **Kernel XDP Backpressure & IPv6 Parity (`bpf/xdp_guard.bpf.c`)**: 1 MB `BPF_MAP_TYPE_RINGBUF` with fail-safe drop backpressure under flood, continuous L7 inspection for whitelisted IPs, and `SCTP`/`DCCP`/`GRE`/`RDS` filtering on IPv6.
+
+### Protocol-Geometry & East-West Rack Quarantine
+- **HTTP/2 & DNS Semantic Gate (`src/engine.c`)**: Blocks HTTP/2 Rapid Reset (`HEADERS` + `RST_STREAM`), `CONTINUATION` Flood (missing `END_HEADERS`), zero/overflow `WINDOW_UPDATE`, DNS tunneling (`label_len >= 48`), and short-body XML/Java deserialization (`rO0A`, `<?xml`, `0xACED0005`).
+- **Browser & East-West Data-Center Quarantine (`bpf/xdp_guard.bpf.c`, `src/engine.c`)**: Drops Gratuitous ARP spoofing, ICMPv6 RA/Redirect (`134`/`137`), unauthorized `RFC1918` East-West traffic, lateral-movement ports (`135`, `137-139`, `445`, `3389`, `5355`, `5985-5986`), `HTTP CONNECT` tunnels, WebSocket smuggling, and `Host:` loopback/link-local DNS rebinding.
