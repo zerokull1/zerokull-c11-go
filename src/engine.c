@@ -69,10 +69,21 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
         uint16_t rec_len = rd_be16(l7 + 3);
         if (ver == 0x0303 && rec_len < 16U) return ZK_VERDICT_DROP;
     }
-    if (proto == 6 && (dport == 80 || dport == 8080) && l7_len >= 13 && *(l7 + 3) == 0x08) {
+    if (proto == 6 && (dport == 80 || dport == 8080) && l7_len >= 13) {
         uint32_t f_len = (rd_be32(l7) >> 8) & 0x00FFFFFFU;
-        uint32_t win_inc = rd_be32(l7 + 9) & 0x7FFFFFFFU;
-        if (f_len == 4U && (win_inc == 0U || win_inc >= 0x40000000U)) return ZK_VERDICT_BAN;
+        uint8_t f_type = *(l7 + 3);
+        if (f_type == 0x08U) {
+            uint32_t win_inc = rd_be32(l7 + 9) & 0x7FFFFFFFU;
+            if (f_len == 4U && (win_inc == 0U || win_inc >= 0x40000000U)) return ZK_VERDICT_BAN;
+        } else if (f_type == 0x01U && (size_t)f_len + 18U <= l7_len) {
+            const uint8_t *f2 = l7 + 9U + (size_t)f_len;
+            uint32_t f2_len = (rd_be32(f2) >> 8) & 0x00FFFFFFU;
+            if (*(f2 + 3) == 0x03U && f2_len == 4U) return ZK_VERDICT_BAN;
+        }
+    }
+    if (proto == 17 && dport == 53 && l7_len >= 14U) {
+        uint8_t q_lbl = *(l7 + 12);
+        if (q_lbl >= 48U && q_lbl <= 63U) return ZK_VERDICT_BAN;
     }
     if (proto == 17 && (dport == 443 || dport == 8443)) return ZK_VERDICT_DROP;
     if (proto == 6 && l7_len >= 12) {
