@@ -119,3 +119,4 @@ Once upstream peers and internal gateways are verified clean, remove `--shadow-d
 - **Strict RFC 793 & Nmap Stealth Shield**: Drops `NULL`, `Xmas`, `SYN+FIN`, `SYN+RST`, `FIN+RST`, `SYN`-with-payload, out-of-bounds `URG` pointers, and stateless `ACK` probes directly in XDP before the kernel emits `RST`.
 - **RFC 9000 Zero-QUIC & Full-Stack Audit**: Validated across 51 adversarial vectors spanning UEFI Pre-OS, VT-d IOMMU DMA, eBPF XDP, RFC 793 TCP FSM, RFC 9000 QUIC, and L7/HTTP2 semantic gates.
 - **RFC 793 Tarpit & 58-Vector Parity**: Synchronized with anti-RST-storm `SYN+ACK` tarpit, `max_cap` bounds checks, and Land reflection drop across **58 audited vectors**.
+- **Pulse Barrier W^X & 61-Vector Parity**: Synchronized with bounded `W^X` capsule loading and idempotent `PROT_NONE` fail-close across **61 audited vectors**.
