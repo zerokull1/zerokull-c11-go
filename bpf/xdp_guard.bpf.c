@@ -47,11 +47,12 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
     for (int i = 0; i < 2; i++) {
         if (h_proto == bpf_htons(ETH_P_8021Q) || h_proto == bpf_htons(ETH_P_8021AD)) {
             struct zk_vlan_hdr *vh = nh;
-            if ((void *)(vh + 1) > data_end) return XDP_PASS;
+            if ((void *)(vh + 1) > data_end) { ZK_DROP_ACTION(st); }
             h_proto = vh->h_vlan_encapsulated_proto;
             nh = (void *)(vh + 1);
         }
     }
+    if (h_proto == bpf_htons(ETH_P_8021Q) || h_proto == bpf_htons(ETH_P_8021AD)) { ZK_DROP_ACTION(st); }
 
     // [East-West L2 Guard] Отсекаем Gratuitous ARP и нелегитимные ARP-опкоды от соседей в стойке
     if (h_proto == bpf_htons(ETH_P_ARP)) {

@@ -218,10 +218,11 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     size_t l3_off = 14;
     uint16_t eth_proto = rd_be16(pkt + 12);
     for (int i = 0; i < 2 && (eth_proto == 0x8100 || eth_proto == 0x88A8); i++) {
-        if (len < l3_off + 24) return ZK_VERDICT_PASS;
+        if (len < l3_off + 24) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
         eth_proto = rd_be16(pkt + l3_off + 2);
         l3_off += 4;
     }
+    if (eth_proto == 0x8100 || eth_proto == 0x88A8) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
     if (eth_proto != 0x0800) return ZK_VERDICT_PASS;
 
     const uint8_t *ip = pkt + l3_off;
