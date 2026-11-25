@@ -85,3 +85,11 @@ This engine is intentionally designed as a **deterministic L2–L7 perimeter gat
 
 - **In Scope (L1i / XDP Hot-Path, ~25–39 cycles/pkt):** Line-rate L3/L4 anomaly drop, branchless SWAR/SIMD normalization (`CL+TE` HTTP smuggling, mixed-case URI traversal `..;/`, HTTP/2 header bombs, stateless `UDP/443` QUIC fallback to TLS 1.3), and zero-allocation IP quarantine.
 - **Explicit Non-Goals (ICAP / Application / Endpoint Layers):** No full TCP stream reassembly, no file carving, and no ZIP/PDF/ELF unpacking or YARA payload scanning inside the privileged perimeter path.
+
+## Root-Cause Canonical Normalizer (Oct–Nov 2026 CVE Wave)
+
+Instead of stacking per-CVE signatures, `zerokull-c11-go` enforces strict canonical protocol framing at the edge (verified under `-Werror -fanalyzer`, `ASan`, `UBSan`, and Big-Endian/Little-Endian `rd_le32`/`rd_le64`):
+
+- **L3/L4 Strict Framing:** Enforces canonical IPv4 (`0x45`, zero IP Options against `CVE-2026-98432`), zero fragmentation, `Zero-QUIC` 1-cycle drop on `UDP/443` & `8443` (`CVE-2026-105016`, `CVE-2026-85790`), and blocks `SCTP`/`DCCP`/`GRE`/`RDS`.
+- **SWAR URI Canonicalizer:** Single-pass detection of raw (`../`, `..;/`, `//`, `\`) and URL-encoded (`%2e`, `%2f`, `%5c`, `%00`) path traversal (`CVE-2026-104286`, `CVE-2026-133968`, `CVE-2026-102226`).
+- **HTTP/2 & Serialization Gate:** Enforces 31-bit `WINDOW_UPDATE` bounds (`CVE-2026-123007` NGINX2Root), rejects `CL`/`TE` header conflicts, and blocks unauthenticated XML-RPC / Java serialized payloads (`CVE-2026-129448`).
