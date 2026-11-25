@@ -79,6 +79,7 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
             const uint8_t *f2 = l7 + 9U + (size_t)f_len;
             uint32_t f2_len = (rd_be32(f2) >> 8) & 0x00FFFFFFU;
             if (*(f2 + 3) == 0x03U && f2_len == 4U) return ZK_VERDICT_BAN;
+            if ((*(l7 + 4) & 0x04U) == 0U && *(f2 + 3) == 0x09U && (*(f2 + 4) & 0x04U) == 0U) return ZK_VERDICT_BAN;
         }
     }
     if (proto == 17 && dport == 53 && l7_len >= 14U) {
@@ -123,10 +124,11 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
                     if (hw_up == 0x524546534E415254ULL && (hw2 & 0xDFDFDFDFDFDFDFDFULL) == 0x4E49444F434E450DULL && (*(l7 + h + 16U) & 0xDFU) == 'G' && *(l7 + h + 17U) == ':') has_te++;
                 }
                 if ((has_cl != 0U && has_te != 0U) || has_cl > 1U || has_te > 1U) return ZK_VERDICT_BAN;
-                for (size_t b = 4U; b + 8U <= scan_lim; b++) {
+                size_t body_lim = (l7_len - 8U < 1024U) ? (l7_len - 8U) : 1024U;
+                for (size_t b = uri_start; b <= body_lim; b++) {
                     if (rd_le32(l7 + b) == 0x0A0D0A0DU && b + 8U <= l7_len) {
                         uint32_t sig = rd_le32(l7 + b + 4U);
-                        if (sig == 0x6D783F3CU || sig == 0x4F44213CU || sig == 0x41304F72U) return ZK_VERDICT_BAN;
+                        if (sig == 0x6D783F3CU || sig == 0x4F44213CU || sig == 0x41304F72U || sig == 0x0500EDACU) return ZK_VERDICT_BAN;
                         break;
                     }
                 }
