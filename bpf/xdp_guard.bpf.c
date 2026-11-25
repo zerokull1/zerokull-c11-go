@@ -26,7 +26,7 @@ struct zk_xdp_stats { __u64 rx_packets; __u64 xdp_drops; __u64 ringbuf_sent; __u
 struct { __uint(type, BPF_MAP_TYPE_LRU_HASH); __uint(max_entries, 65536); __type(key, __u32); __type(value, __u8); } blacklist_map SEC(".maps");
 struct { __uint(type, BPF_MAP_TYPE_HASH); __uint(max_entries, 65536); __type(key, __u32); __type(value, __u8); } whitelist_map SEC(".maps");
 struct { __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY); __uint(max_entries, 1); __type(key, __u32); __type(value, struct zk_xdp_stats); } stats_map SEC(".maps");
-struct { __uint(type, BPF_MAP_TYPE_RINGBUF); __uint(max_entries, 256 * 1024); } ringbuf_map SEC(".maps");
+struct { __uint(type, BPF_MAP_TYPE_RINGBUF); __uint(max_entries, 1024 * 1024); } ringbuf_map SEC(".maps");
 
 SEC("xdp")
 int zerokull_xdp_guard(struct xdp_md *ctx)
@@ -59,6 +59,9 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
         if (ip6->version != 6 || ip6->hop_limit == 0 || ip6->hop_limit == 65 || ip6->hop_limit == 129 || ip6->nexthdr == 44) {
             ZK_DROP_ACTION(st);
         }
+        if (ip6->nexthdr == 132 || ip6->nexthdr == 33 || ip6->nexthdr == 47 || ip6->nexthdr == 21) {
+            ZK_DROP_ACTION(st);
+        }
         if (ip6->nexthdr == 0 || ip6->nexthdr == 60) {
             struct ipv6_opt_hdr *opt = (void *)(ip6 + 1);
             if ((void *)(opt + 1) > data_end || opt->hdrlen > 2) {
@@ -88,7 +91,7 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
     }
     __u32 src_ip = iph->saddr;
     if (bpf_map_lookup_elem(&blacklist_map, &src_ip)) { ZK_DROP_ACTION(st); }
-    if (bpf_map_lookup_elem(&whitelist_map, &src_ip)) return XDP_PASS;
+    __u8 is_wl = bpf_map_lookup_elem(&whitelist_map, &src_ip) != NULL;
 
     __u64 wire_len = (__u64)((long)data_end - (long)data);
     if (wire_len < 34) return XDP_PASS;
@@ -97,7 +100,7 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
     if (cap_len < 34 || cap_len > ZK_MAX_PKT_LEN) return XDP_PASS;
 
     struct zk_pkt_event *ev = bpf_ringbuf_reserve(&ringbuf_map, sizeof(*ev), 0);
-    if (!ev) { if (st) st->ringbuf_drops++; return XDP_PASS; }
+    if (!ev) { if (st) st->ringbuf_drops++; if (!is_wl) { ZK_DROP_ACTION(st); } return XDP_PASS; }
     ev->wire_len = (__u32)wire_len;
     ev->cap_len  = cap_len;
     // [Уязвимость #2 закрыта] Фиксируем точный номер входного порта ctx->ingress_ifindex для многопортового узла
