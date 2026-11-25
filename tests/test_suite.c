@@ -111,5 +111,36 @@ int main(void) {
            (unsigned long long)ctx.total_inspected,
            (unsigned long long)ctx.total_drops,
            (unsigned long long)ctx.total_bans);
+    {
+        uint8_t del_pkt[] = {
+            0,0,0,0,0,1, 0,0,0,0,0,2, 0x08,0x00,
+            0x45,0x00, 0x00,0x56, 0,1, 0,0, 64, 6, 0,0, 10,0,0,88, 10,0,0,1,
+            0x1f,0x90, 0x00,0x50, 0,0,0,1, 0,0,0,1, 0x50,0x18, 0x20,0x00, 0,0, 0,0,
+            'D','E','L','E','T','E',' ','/','.','.','/','.','.','/','e','t','c','/','p','a','s','s','w','d',' ',
+            'H','T','T','P','/','1','.','1','\r','\n','H','o','s','t',':',' ','x','\r','\n','\r','\n'
+        };
+        assert(zk_inspect_packet(&ctx, del_pkt, sizeof(del_pkt), &sip) == ZK_VERDICT_BAN);
+        uint8_t leg_post[] = {
+            0,0,0,0,0,1, 0,0,0,0,0,2, 0x08,0x00,
+            0x45,0x00, 0x00,0x72, 0,1, 0,0, 64, 6, 0,0, 10,0,0,89, 10,0,0,1,
+            0x1f,0x90, 0x00,0x50, 0,0,0,1, 0,0,0,1, 0x50,0x18, 0x20,0x00, 0,0, 0,0,
+            'P','O','S','T',' ','/','a','p','i',' ','H','T','T','P','/','1','.','1','\r','\n',
+            'C','o','n','t','e','n','t','-','T','y','p','e',':',' ','a','p','p','l','i','c','a','t','i','o','n','/','j','s','o','n','\r','\n',
+            'C','o','n','t','e','n','t','-','L','e','n','g','t','h',':',' ','2','\r','\n','\r','\n','{','}'
+        };
+        assert(zk_inspect_packet(&ctx, leg_post, sizeof(leg_post), &sip) == ZK_VERDICT_PASS);
+        uint8_t syn_p[54] = {0,0,0,0,0,1,0,0,0,0,0,2,0x08,0x00,0x45,0,0,40,0,1,0,0,64,6,0,0,10,0,0,90,10,0,0,1,0x9c,0x40,0x01,0xbb,0,0,0,1,0,0,0,0,0x50,0x02,0x20,0,0,0,0,0};
+        assert(zk_inspect_packet(&ctx, syn_p, 54, &sip) == ZK_VERDICT_PASS);
+        uint8_t jit_p[200] = {0,0,0,0,0,1,0,0,0,0,0,2,0x08,0x00,0x45,0,0,170,0,1,0,0,64,6,0,0,10,0,0,90,10,0,0,1,0x9c,0x40,0x01,0xbb,0,0,0,2,0,0,0,1,0x50,0x18,0x20,0,0,0,0,0};
+        uint32_t st = 0xDEADBEEFU; int banned = 0;
+        for (int k = 0; k < 18; k++) {
+            size_t pl = 128U + (size_t)(k & 1);
+            uint16_t tot = (uint16_t)(40U + pl);
+            *(jit_p + 16) = (uint8_t)(tot >> 8); *(jit_p + 17) = (uint8_t)tot;
+            for (size_t b = 0; b < pl; b++) { st ^= st << 13; st ^= st >> 17; st ^= st << 5; *(jit_p + 54 + b) = (uint8_t)st; }
+            if (zk_inspect_packet(&ctx, jit_p, 54U + pl, &sip) == ZK_VERDICT_BAN) { banned = 1; break; }
+        }
+        assert(banned == 1);
+    }
     return 0;
 }
