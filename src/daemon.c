@@ -4,6 +4,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 #include "zerokull.h"
+#include "zk_policy.h"
 #include "xdp_guard.skel.h"
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
@@ -23,6 +24,8 @@
 #define ZK_MAX_PORTS 1024
 
 static volatile sig_atomic_t g_stop = 0;
+static volatile sig_atomic_t g_reload = 0;
+static void on_sighup(int sig) { (void)sig; g_reload = 1; }
 
 struct app_ctx {
     struct zk_engine_ctx engine;
@@ -102,12 +105,17 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
 int main(int argc, char **argv) {
     bool all_ports = true;
     bool shadow_mode = false;
+    bool cli_shadow = false;
+    const char *policy_path = getenv("ZK_POLICY_PATH");
+    if (!policy_path || !(*policy_path)) policy_path = ZK_DEFAULT_POLICY_PATH;
     unsigned int single_idx = 0;
     const char *mode_label = "ALL-PORTS-MESH (1..1024 NICs)";
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--shadow") == 0 || strcmp(argv[i], "-s") == 0) {
-            shadow_mode = true;
+            shadow_mode = true; cli_shadow = true;
+        } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
+            policy_path = argv[++i];
         } else if (strcmp(argv[i], "all") == 0 || strcmp(argv[i], "--all") == 0) {
             all_ports = true;
         } else {
@@ -122,6 +130,15 @@ int main(int argc, char **argv) {
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
+    struct sigaction sa_hup = { .sa_handler = on_sighup };
+    sigemptyset(&sa_hup.sa_mask);
+    sigaction(SIGHUP, &sa_hup, NULL);
+
+    struct zk_policy_cfg pol_cur, pol_prev;
+    memset(&pol_prev, 0, sizeof(pol_prev));
+    (void)zk_policy_load(policy_path, &pol_cur);
+    if (!cli_shadow && pol_cur.has_mode) shadow_mode = pol_cur.shadow_mode;
+    if (pol_cur.cpu_affinity >= 0) zk_policy_apply_affinity(pol_cur.cpu_affinity);
 
     struct xdp_guard_bpf *skel = xdp_guard_bpf__open();
     if (!skel) { fprintf(stderr, "xdp_guard_bpf__open failed\n"); return 1; }
@@ -182,6 +199,8 @@ int main(int argc, char **argv) {
     app.ncpus        = ncpus;
     app.cpu_stats    = calloc(ncpus, sizeof(struct zk_xdp_stats));
     app.shadow_mode  = shadow_mode;
+    zk_policy_apply_bpf(&pol_prev, &pol_cur, app.whitelist_fd, app.blacklist_fd);
+    pol_prev = pol_cur;
 
     struct ring_buffer *rb = ring_buffer__new(bpf_map__fd(skel->maps.ringbuf_map), handle_event, &app, NULL);
     if (!rb) {
@@ -199,6 +218,22 @@ int main(int argc, char **argv) {
     fflush(stdout);
     while (!g_stop) {
         if (ring_buffer__poll(rb, 100) < 0 && errno != EINTR) break;
+        if (g_reload) {
+            g_reload = 0;
+            if (zk_policy_load(policy_path, &pol_cur) == 0 && pol_cur.loaded) {
+                if (!cli_shadow && pol_cur.has_mode) {
+                    app.shadow_mode = pol_cur.shadow_mode;
+                    skel->rodata->shadow_mode = pol_cur.shadow_mode ? 1 : 0;
+                    if (shm) shm->shadow_mode = pol_cur.shadow_mode ? 1U : 0U;
+                }
+                if (pol_cur.cpu_affinity >= 0) zk_policy_apply_affinity(pol_cur.cpu_affinity);
+                zk_policy_apply_bpf(&pol_prev, &pol_cur, app.whitelist_fd, app.blacklist_fd);
+                pol_prev = pol_cur;
+                printf("[zerokull] reloaded policy %s (mode=%s, allow=%u, deny=%u)\n",
+                       policy_path, app.shadow_mode ? "SHADOW" : "ENFORCE", pol_cur.allow_cnt, pol_cur.deny_cnt);
+                fflush(stdout);
+            }
+        }
         if (all_ports) (void)sync_all_ports_xdp(skel->progs.zerokull_xdp_guard, links, true, 0);
         sync_telemetry(&app);
     }

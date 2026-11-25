@@ -33,8 +33,8 @@ build/xdp_guard.bpf.o: bpf/xdp_guard.bpf.c | build
 build/xdp_guard.skel.h: build/xdp_guard.bpf.o
 	$(BPFTOOL) gen skeleton $< > $@
 
-build/zerokull-daemon: src/daemon.c src/engine.c include/zerokull.h build/xdp_guard.skel.h
-	$(CC) $(CFLAGS) src/daemon.c src/engine.c -o $@ $(LDFLAGS)
+build/zerokull-daemon: src/daemon.c src/engine.c src/policy.c include/zerokull.h include/zk_policy.h build/xdp_guard.skel.h
+	$(CC) $(CFLAGS) src/daemon.c src/engine.c src/policy.c -o $@ $(LDFLAGS)
 
 build/zerokull-stat: src/stat.c include/zerokull.h | build
 	$(CC) $(CFLAGS) src/stat.c -o $@ $(BIN_LD)
