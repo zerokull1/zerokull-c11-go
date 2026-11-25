@@ -19,7 +19,7 @@ LDFLAGS  := $(BIN_LD) $(shell pkg-config --libs libbpf) -lelf -lz
 
 .PHONY: all clean test install uninstall
 
-all: build/zerokull-daemon build/zerokull-stat build/zerokull-ctl build/test_suite
+all: build/zerokull-daemon build/zerokull-stat build/zero-tui build/zerokull-ctl build/test_suite
 
 build:
 	mkdir -p build
@@ -38,6 +38,9 @@ build/zerokull-daemon: src/daemon.c src/engine.c src/policy.c include/zerokull.h
 
 build/zerokull-stat: src/stat.c include/zerokull.h | build
 	$(CC) $(CFLAGS) src/stat.c -o $@ $(BIN_LD)
+
+build/zero-tui: src/tui.c include/zerokull.h | build
+	$(CC) $(CFLAGS) src/tui.c -o $@ $(BIN_LD)
 
 build/zerokull-ctl: cmd/zerokull-ctl/main.go go.mod | build
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o $@ ./cmd/zerokull-ctl
