@@ -266,7 +266,17 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     }
     ctx->total_inspected++;
     v = inspect_l7_payload(proto, dport, l7, l7_len);
-    if (v == ZK_VERDICT_PASS && proto == 6) v = inspect_stateful_drift(ctx, src_ip, dst_ip, ports_word, tcp_flags, l7, l7_len);
+    if (v == ZK_VERDICT_PASS && proto == 6) {
+        v = inspect_stateful_drift(ctx, src_ip, dst_ip, ports_word, tcp_flags, l7, l7_len);
+        if (v == ZK_VERDICT_PASS && dport != 22U && l7_len >= 1U && l7_len < 12U && (tcp_flags & 0x01U) == 0U) {
+            uint32_t ip_lo = (src_ip < dst_ip) ? src_ip : dst_ip, ip_hi = (src_ip < dst_ip) ? dst_ip : src_ip;
+            uint32_t p_sw = (ports_word >> 16) | (ports_word << 16);
+            uint32_t fid = zk_crc32c_u32(zk_crc32c_u32(zk_crc32c_u32(0x5A45524FU, ip_lo), ip_hi), (ports_word < p_sw) ? ports_word : p_sw);
+            struct zk_flow_slot *sl = &ctx->flows[(fid ? fid : 1U) & ZK_FLOW_MASK];
+            if ((sl->fsm_flags & 16U) != 0U) { memset(sl, 0, sizeof(*sl)); sl->ema_popcnt = 64; v = ZK_VERDICT_BAN; }
+            else { sl->fsm_flags |= 16U; }
+        }
+    }
     if (v == ZK_VERDICT_DROP) ctx->total_drops++;
     else if (v == ZK_VERDICT_BAN) { ctx->total_drops++; ctx->total_bans++; }
     return v;
