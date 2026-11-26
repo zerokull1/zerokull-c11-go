@@ -399,3 +399,37 @@ int zk_pulse_periodic_realign(struct zk_hardware_pulse_anchor *a, uint32_t arriv
     }
     return 1;
 }
+
+// ZEROKULL Slab-Isolated Quarantine & Mirror Labyrinth (4 banks x 16 cells, 0 malloc)
+typedef struct {
+    uint64_t tag64;
+    uint32_t cls;
+    uint32_t locked;
+    uint8_t  mirage_ttl;
+    uint8_t  tcp_win;
+    uint8_t  state;
+} zk_slab_cell_t;
+
+static zk_slab_cell_t zk_labyrinth_arena[64];
+
+uint32_t zk_labyrinth_admit(uint64_t fid, uint32_t threat_cls, uint64_t tsc_lo, uint8_t *out_ttl, uint8_t *out_win) {
+    uint32_t cls = threat_cls & 3U;
+    uint64_t tag = (fid * 0x9E3779B97F4A7C15ULL) ^ ((uint64_t)cls << 48) ^ 0x5A45524F4B554C4CULL;
+    uint32_t base = cls * 16U + (uint32_t)((tag & 7ULL) * 2ULL);
+    zk_slab_cell_t *c0 = &zk_labyrinth_arena[base];
+    zk_slab_cell_t *c1 = &zk_labyrinth_arena[base + 1U];
+    zk_slab_cell_t *t = NULL;
+    if (c0->state && c0->tag64 == tag) t = c0;
+    else if (c1->state && c1->tag64 == tag) t = c1;
+    else if (!c0->state) t = c0;
+    else if (!c1->state) t = c1;
+    else if (cls == 0U) { memset(c0, 0, sizeof(*c0)); t = c0; }
+    else return 0U;
+    t->tag64 = tag; t->cls = cls; t->locked = (cls == 1U || cls == 3U) ? 1U : 0U;
+    t->mirage_ttl = (cls == 0U || cls == 2U) ? (uint8_t)(65U + (uint8_t)(tsc_lo & 0x35U)) : 0U;
+    t->tcp_win = (cls == 0U || cls == 2U) ? 1U : 0U;
+    t->state = (cls == 3U) ? 3U : ((cls == 0U || cls == 2U) ? 1U : 2U);
+    if (out_ttl) *out_ttl = t->mirage_ttl;
+    if (out_win) *out_win = t->tcp_win;
+    return t->state;
+}
