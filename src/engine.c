@@ -281,7 +281,6 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     const uint8_t *l4 = ip + 20;
     size_t l4_avail = ip_avail - 20;
     uint16_t dport = 0;
-        if (dport == 135 || (dport >= 137 && dport <= 139) || dport == 445 || dport == 3389 || dport == 5355 || dport == 5985 || dport == 5986) { return ZK_VERDICT_BAN; }
         uint8_t tcp_flags = 0; const uint8_t *l7 = NULL; size_t l7_len = 0; uint32_t ports_word = 0;
 
     if (proto == 6) {
@@ -302,6 +301,11 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
         dport = rd_be16(l4 + 2); l7 = l4 + 8; l7_len = l4_avail - 8;
     }
     ctx->total_inspected++;
+    if (dport == 135U || (dport >= 137U && dport <= 139U) || dport == 445U ||
+        dport == 3389U || dport == 5355U || dport == 5985U || dport == 5986U) {
+        ctx->total_bans++;
+        return ZK_VERDICT_BAN;
+    }
     v = inspect_l7_payload(proto, dport, l7, l7_len);
     if (v == ZK_VERDICT_PASS && proto == 6) {
         v = inspect_stateful_drift(ctx, src_ip, dst_ip, ports_word, tcp_flags, l7, l7_len);
