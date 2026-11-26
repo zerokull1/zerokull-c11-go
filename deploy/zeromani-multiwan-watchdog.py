@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ZEROMANI (zerokull1) | 0x5A45524F4D414E49ULL
 import re, subprocess, time
 
 TARGETS = ["77.88.8.8", "9.9.9.9"]

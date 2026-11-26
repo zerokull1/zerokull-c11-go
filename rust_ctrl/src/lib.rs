@@ -1,3 +1,4 @@
+// ZEROMANI (zerokull1) | 0x5A45524F4D414E49ULL
 use std::ffi::{c_int, c_void, CStr};
 use std::fs;
 use std::io::ErrorKind;

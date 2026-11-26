@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# ZEROMANI (zerokull1) | 0x5A45524F4D414E49ULL
 set -euo pipefail
 
 mkdir -p /etc/systemd/system/nftables.service.d /etc/systemd/system/zeromani-18caps.service.d /etc/systemd/system/zeromani-core3-guard.service.d
