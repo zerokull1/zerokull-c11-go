@@ -43,6 +43,8 @@ void zk_engine_init(struct zk_engine_ctx *ctx) {
 static inline enum zk_verdict inspect_l3_guard(const uint8_t *ip, size_t ip_avail) {
     if (ip_avail < 20 || (*(ip + 0)) != 0x45U) return ZK_VERDICT_DROP;
     if ((rd_be16(ip + 6) & 0x3FFFU) != 0) return ZK_VERDICT_DROP;
+    uint32_t saddr = rd_le32(ip + 12), daddr = rd_le32(ip + 16);
+    if (saddr == daddr || saddr == 0U || saddr == 0xFFFFFFFFU || daddr == 0xFFFFFFFFU) return ZK_VERDICT_DROP;
     uint8_t ttl = *(ip + 8);
     if (ttl == 0 || ttl == 65 || ttl == 129) return ZK_VERDICT_DROP;
     return ZK_VERDICT_PASS;
@@ -59,7 +61,7 @@ static inline uint32_t zk_inspect_php_proto_vector_swar(const uint8_t *buf, size
         uint8_t b1 = (uint8_t)((w >> 8) & 0xFFU);
         uint8_t b2 = (uint8_t)((w >> 16) & 0xFFU);
         hit |= (uint32_t)(((b0 == 'O') | (b0 == 'C')) & (b1 == ':') & ((uint8_t)(b2 - '0') <= 9U));
-        uint32_t wu = w & 0xDFDFDFFFU;
+        uint32_t wu = w & 0xDFFFFFFFU;
         hit |= (uint32_t)((wu == 0x4133254FU) | (wu == 0x41332543U));
         uint32_t wl = w | 0x20202020U;
         if (__builtin_expect(wl == 0x736E692FU && i + 12U <= scan_lim, 0)) {
