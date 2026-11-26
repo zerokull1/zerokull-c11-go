@@ -187,3 +187,7 @@ Every installation runs `./build/test_suite` and enforces cryptographic `sha256s
 ## Universal Hardware-Adaptive GPFIFO + GPPut Fast-Path (26 Nov 2026)
 - **Hardware-Independent Ring Auto-Detector:** Dynamically discovers compatible compute ring/doorbell offsets via monotonic memory-page calibration (`Self-Test` verified) with automatic zero-dependency SWAR/CPU fallback on headless or non-GPU hosts.
 - **Zero-Syscall / Zero-Driver Hot Loop:** Eliminates per-dispatch driver submission overhead (`12.39 µs` vs `17.17 µs`, **1.39x throughput gain**, **80,716 ops/sec**, lower CPU/GPU thermal load).
+
+### CMS/PHP Deserialization & User-Space Lateral Port Guard
+- **SWAR CMS & PHP Object Injection Filter:** Blocks `/install.php`, `/update.php`, `X-Original-URL` path overrides, `phar://` wrappers, and raw/URL-encoded serialized payloads (`O:<digit>:`, `C:<digit>:`, `O%3A`, `C%3A`) with zero heap allocations.
+- **Defense-in-Depth Lateral Movement Ban:** Mirrors XDP East-West port bans (`135`, `137-139`, `445`, `3389`, `5355`, `5985-5986` -> `ZK_VERDICT_BAN`) directly inside user-space `zk_inspect_packet()`.
