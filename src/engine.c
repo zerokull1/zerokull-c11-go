@@ -48,6 +48,38 @@ static inline enum zk_verdict inspect_l3_guard(const uint8_t *ip, size_t ip_avai
     return ZK_VERDICT_PASS;
 }
 
+
+static inline uint32_t zk_inspect_php_proto_vector_swar(const uint8_t *buf, size_t len) {
+    if (len < 6U) return 0U;
+    size_t scan_lim = (len > 1024U) ? 1024U : len;
+    uint32_t hit = 0U;
+    for (size_t i = 0U; i + 4U <= scan_lim; i++) {
+        uint32_t w = rd_le32(buf + i);
+        uint8_t b0 = (uint8_t)(w & 0xFFU) & 0xDFU;
+        uint8_t b1 = (uint8_t)((w >> 8) & 0xFFU);
+        uint8_t b2 = (uint8_t)((w >> 16) & 0xFFU);
+        hit |= (uint32_t)(((b0 == 'O') | (b0 == 'C')) & (b1 == ':') & ((uint8_t)(b2 - '0') <= 9U));
+        uint32_t wu = w & 0xDFDFDFFFU;
+        hit |= (uint32_t)((wu == 0x4133254FU) | (wu == 0x41332543U));
+        uint32_t wl = w | 0x20202020U;
+        if (__builtin_expect(wl == 0x736E692FU && i + 12U <= scan_lim, 0)) {
+            hit |= (uint32_t)((rd_le64(buf + i + 4U) | 0x2020200020202020ULL) == 0x7068702E6C6C6174ULL);
+        }
+        if (__builtin_expect(wl == 0x6470752FU && i + 11U <= scan_lim, 0)) {
+            uint64_t tail = 0ULL;
+            memcpy(&tail, buf + i + 4U, 7U);
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+            tail = __builtin_bswap64(tail);
+#endif
+            hit |= (uint32_t)((tail | 0x0020202000202020ULL) == 0x007068702E657461ULL);
+        }
+        if (__builtin_expect(wl == 0x72616870U && i + 7U <= scan_lim, 0)) {
+            hit |= (uint32_t)((*(buf + i + 4U) == ':') & (*(buf + i + 5U) == '/') & (*(buf + i + 6U) == '/'));
+        }
+    }
+    return hit;
+}
+
 static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, const uint8_t *l7, size_t l7_len) {
     if (!l7 || l7_len == 0) return ZK_VERDICT_PASS;
     if (dport == 135U || (dport >= 137U && dport <= 139U) || dport == 445U || dport == 3389U || dport == 5355U || dport == 5985U || dport == 5986U) {
@@ -86,6 +118,7 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
         if (q_lbl >= 48U && q_lbl <= 63U) return ZK_VERDICT_BAN;
     }
     if (proto == 17 && (dport == 443 || dport == 8443)) return ZK_VERDICT_DROP;
+    if (proto == 6 && zk_inspect_php_proto_vector_swar(l7, l7_len)) return ZK_VERDICT_BAN;
     if (proto == 6 && l7_len >= 12) {
         size_t uri_start = 0U;
         for (size_t m = 0U; m < 10U && m + 1U < l7_len; m++) {

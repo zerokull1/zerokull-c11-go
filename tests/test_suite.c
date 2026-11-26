@@ -143,7 +143,31 @@ int main(void) {
         }
         assert(banned == 1);
     }
-        ZkGpuRingCtx gctx;
+        
+    {
+        const char *vecs[4] = {
+            "GET /core/install.php?profile=standard HTTP/1.1\r\nHost: example.com\r\n\r\n",
+            "GET / HTTP/1.1\r\nHost: example.com\r\nX-Original-URL: /update.php\r\n\r\n",
+            "POST /api/v1/user HTTP/1.1\r\nHost: example.com\r\nCookie: s=O:8:\"stdClass\":0:{}\r\n\r\n",
+            "GET /avatar?src=phar://uploads/evil.jpg HTTP/1.1\r\nHost: example.com\r\n\r\n"
+        };
+        for (size_t k = 0; k < 4; k++) {
+            uint8_t p[256] = {0};
+            p[1] = 1; p[7] = 2; p[12] = 0x08; p[13] = 0x00;
+            p[14] = 0x45; p[19] = 1; p[22] = 64; p[23] = 6;
+            p[26] = 10; p[29] = (uint8_t)(80 + k);
+            p[30] = 10; p[33] = 1;
+            p[34] = 0x1f; p[35] = 0x90; p[36] = 0x00; p[37] = 0x50;
+            p[41] = 1; p[45] = 1; p[46] = 0x50; p[47] = 0x18; p[48] = 0x20;
+            size_t pl = strlen(vecs[k]);
+            uint16_t tot = (uint16_t)(40U + pl);
+            p[16] = (uint8_t)(tot >> 8); p[17] = (uint8_t)tot;
+            memcpy(p + 54, vecs[k], pl);
+            assert(zk_inspect_packet(&ctx, p, 54U + pl, &sip) == ZK_VERDICT_BAN);
+        }
+    }
+
+    ZkGpuRingCtx gctx;
     zk_gpu_ring_init(&gctx);
     uint64_t mock_ring[16] = {0};
     volatile uint32_t mock_get = 0, mock_put = 0;
