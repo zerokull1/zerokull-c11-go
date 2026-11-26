@@ -61,11 +61,16 @@ static inline void zk_gpu_ring_init(ZkGpuRingCtx *ctx) {
     memcpy(ctx->device_name, "Universal-SWAR-CPU", 19);
 }
 
-static inline int zk_gpu_ring_submit_batch(ZkGpuRingCtx *ctx) {
+static inline int zk_gpu_ring_submit_pipelined(ZkGpuRingCtx *ctx, uint32_t win_slots) {
     if (!ctx) return -1;
     if (ctx->mode == ZK_ACCEL_DIRECT_RING && ctx->ring_ptr && ctx->put_ptr && ctx->get_ptr && ctx->ndesc > 0) {
         uint32_t put = ctx->cur_put;
         uint32_t mask = ctx->ring_mask;
+        uint32_t limit = (win_slots > 0 ? win_slots : 4u) * ctx->ndesc;
+        uint64_t spin = 0;
+        while (((put - *ctx->get_ptr) & mask) >= limit && spin++ < 50000000ULL) {
+            ZK_PAUSE();
+        }
         for (uint32_t d = 0; d < ctx->ndesc; d++) {
             ctx->ring_ptr[(put + d) & mask] = ctx->desc[d];
         }
@@ -73,14 +78,27 @@ static inline int zk_gpu_ring_submit_batch(ZkGpuRingCtx *ctx) {
         ctx->cur_put = put;
         ZK_SFENCE();
         *ctx->put_ptr = put;
-        ZK_SFENCE();
-        uint64_t spin = 0;
-        while (*ctx->get_ptr != put && spin++ < 50000000ULL) {
-            ZK_PAUSE();
-        }
-        return (*ctx->get_ptr == put) ? 0 : -2;
+        return 0;
     }
     return 0;
+}
+
+static inline int zk_gpu_ring_sync_drain(ZkGpuRingCtx *ctx) {
+    if (!ctx) return -1;
+    if (ctx->mode == ZK_ACCEL_DIRECT_RING && ctx->get_ptr) {
+        ZK_SFENCE();
+        uint64_t spin = 0;
+        while (*ctx->get_ptr != ctx->cur_put && spin++ < 50000000ULL) {
+            ZK_PAUSE();
+        }
+        return (*ctx->get_ptr == ctx->cur_put) ? 0 : -2;
+    }
+    return 0;
+}
+
+static inline int zk_gpu_ring_submit_batch(ZkGpuRingCtx *ctx) {
+    int rc = zk_gpu_ring_submit_pipelined(ctx, 1u);
+    return (rc == 0) ? zk_gpu_ring_sync_drain(ctx) : rc;
 }
 
 #endif
