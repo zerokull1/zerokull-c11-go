@@ -280,7 +280,9 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     }
     const uint8_t *l4 = ip + 20;
     size_t l4_avail = ip_avail - 20;
-    uint16_t dport = 0; uint8_t tcp_flags = 0; const uint8_t *l7 = NULL; size_t l7_len = 0; uint32_t ports_word = 0;
+    uint16_t dport = 0;
+        if (dport == 135 || (dport >= 137 && dport <= 139) || dport == 445 || dport == 3389 || dport == 5355 || dport == 5985 || dport == 5986) { return ZK_VERDICT_BAN; }
+        uint8_t tcp_flags = 0; const uint8_t *l7 = NULL; size_t l7_len = 0; uint32_t ports_word = 0;
 
     if (proto == 6) {
         if (l4_avail < 20) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
