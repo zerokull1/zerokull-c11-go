@@ -1,3 +1,4 @@
+#include "zk_gpu_ring.h"
 // ZEROKULL (zerokull1) | Author Signature: 0x5A45524F4B554C4CULL
 // Copyright (c) 2026 zerokull1 (https://github.com)
 // Licensed under GPL-3.0.
@@ -142,5 +143,17 @@ int main(void) {
         }
         assert(banned == 1);
     }
+        ZkGpuRingCtx gctx;
+    zk_gpu_ring_init(&gctx);
+    uint64_t mock_ring[16] = {0};
+    volatile uint32_t mock_get = 0, mock_put = 0;
+    gctx.mode = ZK_ACCEL_DIRECT_RING;
+    gctx.ring_ptr = mock_ring; gctx.ring_mask = 15;
+    gctx.get_ptr = &mock_get; gctx.put_ptr = &mock_put;
+    gctx.ndesc = 4; gctx.desc[0] = 0x04000000ULL;
+    mock_get = 4;
+    if (zk_gpu_ring_submit_batch(&gctx) != 0 || mock_put != 4) return 91;
+    if (zk_swar_batch_entropy_score((const uint8_t *)"ZEROKULL", 8) == 0) return 92;
+    printf("[PASS] Universal GPFIFO+GPPut Ring & SWAR Fallback Self-Test OK\n");
     return 0;
 }

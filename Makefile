@@ -15,7 +15,7 @@ endif
 
 CFLAGS   := $(OPT_FLAGS) -std=c11 -Wall -Wextra -Werror -Iinclude -Ibuild
 BIN_LD   := -Wl,--gc-sections -s
-LDFLAGS  := $(BIN_LD) $(shell pkg-config --libs libbpf) -lelf -lz
+LDFLAGS  := $(BIN_LD) $(shell pkg-config --libs libbpf) -lelf -lz -ldl
 
 .PHONY: all clean test sha256 verify-sha256 install uninstall
 
@@ -37,8 +37,8 @@ build/libzk_policy_rs.a: rust_ctrl/Cargo.toml rust_ctrl/src/lib.rs | build
 	cargo build --release --manifest-path rust_ctrl/Cargo.toml
 	cp rust_ctrl/target/release/libzk_policy_rs.a $@
 
-build/zerokull-daemon: src/daemon.c src/engine.c build/libzk_policy_rs.a include/zerokull.h include/zk_policy.h build/xdp_guard.skel.h
-	$(CC) $(CFLAGS) src/daemon.c src/engine.c build/libzk_policy_rs.a -o $@ $(LDFLAGS)
+build/zerokull-daemon: src/daemon.c src/engine.c src/zk_gpu_ring.c build/libzk_policy_rs.a include/zerokull.h include/zk_policy.h build/xdp_guard.skel.h
+	$(CC) $(CFLAGS) src/daemon.c src/engine.c src/zk_gpu_ring.c build/libzk_policy_rs.a -o $@ $(LDFLAGS)
 
 build/zerokull-stat: src/stat.c include/zerokull.h | build
 	$(CC) $(CFLAGS) src/stat.c -o $@ $(BIN_LD)
@@ -50,8 +50,8 @@ build/zero-tui: rust_ctrl/Cargo.toml rust_ctrl/src/bin/zero-tui.rs | build
 build/zerokull-ctl: cmd/zerokull-ctl/main.go go.mod | build
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o $@ ./cmd/zerokull-ctl
 
-build/test_suite: tests/test_suite.c src/engine.c include/zerokull.h | build
-	$(CC) $(CFLAGS) tests/test_suite.c src/engine.c -o $@ $(BIN_LD)
+build/test_suite: tests/test_suite.c src/engine.c src/zk_gpu_ring.c include/zerokull.h | build
+	$(CC) $(CFLAGS) tests/test_suite.c src/engine.c src/zk_gpu_ring.c -o $@ $(BIN_LD) -ldl
 
 test: build/test_suite
 	./build/test_suite
