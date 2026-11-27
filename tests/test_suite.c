@@ -167,6 +167,23 @@ int main(void) {
         }
     }
 
+    /* Regression test: CVE-2026-133469 empty JSON token in Authorization header */
+    {
+        const char *req = "GET /api/v1/session HTTP/1.1\r\nHost: example.com\r\nAuthorization: Bearer {}\r\n\r\n";
+        uint8_t p[256] = {0};
+        uint32_t sip = 0U;
+        p[1] = 1; p[7] = 2; p[12] = 0x08; p[13] = 0x00;
+        p[14] = 0x45; p[19] = 1; p[22] = 64; p[23] = 6;
+        p[26] = 10; p[29] = 90; p[30] = 10; p[33] = 1;
+        p[34] = 0x1f; p[35] = 0x90; p[36] = 0x00; p[37] = 0x50;
+        p[41] = 1; p[45] = 1; p[46] = 0x50; p[47] = 0x18; p[48] = 0x20;
+        size_t pl = strlen(req);
+        uint16_t tot = (uint16_t)(40U + pl);
+        p[16] = (uint8_t)(tot >> 8); p[17] = (uint8_t)tot;
+        memcpy(p + 54, req, pl);
+        assert(zk_inspect_packet(&ctx, p, 54U + pl, &sip) == ZK_VERDICT_BAN);
+    }
+
     ZkGpuRingCtx gctx;
     zk_gpu_ring_init(&gctx);
     uint64_t mock_ring[16] = {0};

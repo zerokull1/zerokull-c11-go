@@ -264,6 +264,26 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
     return res;
 }
 
+/* CVE-2026-133469: branchless SWAR check for empty JSON token "{}" / "%7b%7d" in Auth/Cookie */
+static inline uint32_t zk_check_empty_json_token_swar(const uint8_t *p, uint32_t len) {
+    if (len < 16U) return 0U;
+    uint32_t scan = len > 512U ? 512U : len;
+    uint32_t has_auth = 0U;
+    uint32_t has_empty_obj = 0U;
+    for (uint32_t i = 0U; i + 8U <= scan; i++) {
+        uint64_t w = rd_le64(p + i);
+        uint64_t up = w & 0xDFDFDFDFDFDFDFDFULL;
+        has_auth |= (uint32_t)(up == 0x5A49524F48545541ULL) |
+                    (uint32_t)((up & 0x0000FFFFFFFFFFFFULL) == 0x000045494B4F4F43ULL);
+        uint64_t b6_raw = w & 0x0000DF00FFDF00FFULL;
+        has_empty_obj |= (uint32_t)(b6_raw == 0x0000443725423725ULL);
+    }
+    for (uint32_t i = 0U; i + 2U <= scan; i++) {
+        has_empty_obj |= (uint32_t)(p[i] == '{' && p[i + 1U] == '}');
+    }
+    return has_auth & has_empty_obj;
+}
+
 enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt, size_t len, uint32_t *out_src_ip_be) {
     if (!ctx || !pkt || len < 34) return ZK_VERDICT_PASS;
     size_t l3_off = 14;
@@ -315,6 +335,11 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
         if (l4_avail < 8) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
         memcpy(&ports_word, l4, sizeof(ports_word));
         dport = rd_be16(l4 + 2); l7 = l4 + 8; l7_len = l4_avail - 8;
+    }
+    if (l7 && l7_len >= 16U && zk_check_empty_json_token_swar(l7, (uint32_t)l7_len)) {
+        atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed);
+        atomic_fetch_add_explicit(&ctx->total_bans, 1ULL, memory_order_relaxed);
+        return ZK_VERDICT_BAN;
     }
     atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed);
     if (dport == 135U || (dport >= 137U && dport <= 139U) || dport == 445U ||
