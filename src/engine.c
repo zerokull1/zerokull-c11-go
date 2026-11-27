@@ -539,3 +539,74 @@ uint32_t zk_labyrinth_admit(uint64_t fid, uint32_t threat_cls, uint64_t tsc_lo, 
     if (out_win) *out_win = t->tcp_win;
     return t->state;
 }
+
+
+static inline uint32_t zk_load_le32(const uint8_t *p) {
+    return ((uint32_t)(*p)) | ((uint32_t)(*(p + 1)) << 8) | ((uint32_t)(*(p + 2)) << 16) | ((uint32_t)(*(p + 3)) << 24);
+}
+
+static inline uint64_t zk_load_le64(const uint8_t *p) {
+    return ((uint64_t)zk_load_le32(p)) | ((uint64_t)zk_load_le32(p + 4) << 32);
+}
+
+uint8_t zk_normalize_64b_gate(
+    struct zk_meta_norm_slot *slot,
+    uint64_t hash,
+    uint8_t is_udp,
+    uint8_t tcp_flags,
+    const uint8_t *l7,
+    size_t l7_len
+) {
+    if (!slot) return 1U;
+    if (is_udp) {
+        if (!l7 || l7_len < 16U) return 1U;
+        uint32_t w0 = zk_load_le32(l7);
+        uint32_t idx1 = zk_load_le32(l7 + 4);
+        uint32_t idx2 = zk_load_le32(l7 + 8);
+        uint64_t ctr = zk_load_le64(l7 + 8);
+
+        uint32_t msg_type = w0 & 0xFFU;
+        uint8_t rsv_ok = (uint8_t)((w0 >> 8) == 0U);
+        uint8_t same_flow = (uint8_t)(slot->flow_hash == hash);
+        uint32_t cli_idx = (uint32_t)slot->meta_anchor;
+        uint32_t srv_idx = (uint32_t)(slot->meta_anchor >> 32);
+
+        uint8_t is_init = (uint8_t)((msg_type == 1U) & (l7_len == 148U) & (rsv_ok == 1U));
+        uint8_t is_resp = (uint8_t)((msg_type == 2U) & (l7_len == 92U) & (rsv_ok == 1U)
+            & (same_flow == 1U) & (slot->state == 1U) & (idx2 == cli_idx));
+        uint8_t is_cook = (uint8_t)((msg_type == 3U) & (l7_len == 64U) & (rsv_ok == 1U)
+            & (same_flow == 1U) & (slot->state == 1U) & (idx2 == cli_idx));
+
+        uint8_t idx_ok = (uint8_t)((idx1 == srv_idx) | (idx1 == cli_idx));
+        uint8_t ctr_ok = (uint8_t)((ctr >= slot->seq_or_ctr) | ((slot->seq_or_ctr - ctr) <= 2048ULL));
+        uint8_t is_data = (uint8_t)((msg_type == 4U) & (l7_len >= 64U) & ((l7_len & 15U) == 0U) & (rsv_ok == 1U)
+            & (same_flow == 1U) & (slot->state == 2U) & (idx_ok == 1U) & (ctr_ok == 1U));
+
+        if (is_init == 1U) {
+            slot->flow_hash = hash;
+            slot->meta_anchor = (uint64_t)idx1;
+            slot->seq_or_ctr = 0ULL;
+            slot->state = 1U;
+        } else if (is_resp == 1U) {
+            slot->meta_anchor = ((uint64_t)idx1 << 32) | (uint64_t)cli_idx;
+            slot->state = 2U;
+        } else if (is_data == 1U && ctr > slot->seq_or_ctr) {
+            slot->seq_or_ctr = ctr;
+        }
+        return (uint8_t)((is_init | is_resp | is_cook | is_data) ^ 1U);
+    }
+
+    if ((tcp_flags & 0x17U) == 0x02U) {
+        if (l7_len != 0U) return 1U;
+        slot->flow_hash = hash;
+        slot->state = 1U;
+        return 0U;
+    }
+    if (slot->flow_hash != hash || slot->state == 0U) return 1U;
+    if (l7_len > 0U && slot->state == 1U) {
+        if (!l7) return 1U;
+        if (l7_len < 64U && (tcp_flags & 0x01U) == 0U) return 1U;
+        slot->state = 2U;
+    }
+    return 0U;
+}

@@ -89,4 +89,23 @@ struct __attribute__((aligned(64))) zk_hardware_pulse_anchor {
 void zk_pulse_calibrate_boot(struct zk_hardware_pulse_anchor *a, uint32_t target_batch);
 int  zk_pulse_periodic_realign(struct zk_hardware_pulse_anchor *a, uint32_t arrived_pkts);
 
+
+struct __attribute__((aligned(64))) zk_meta_norm_slot {
+    uint64_t flow_hash;
+    uint64_t meta_anchor;
+    uint64_t seq_or_ctr;
+    uint8_t  state;
+    uint8_t  _pad;
+};
+
+uint8_t zk_normalize_64b_gate(
+    struct zk_meta_norm_slot *slot,
+    uint64_t hash,
+    uint8_t is_udp,
+    uint8_t tcp_flags,
+    const uint8_t *l7,
+    size_t l7_len
+);
+
 #endif
+

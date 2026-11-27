@@ -210,6 +210,22 @@ int main(void) {
     if (zk_inspect_packet(&ctx, vlan0_pkt, 58, NULL) != ZK_VERDICT_DROP) return 94;
     const uint8_t *nfs_pkt = (const uint8_t[]){0x00,0x11,0x22,0x33,0x44,0x55,0xaa,0xbb,0xcc,0xdd,0xee,0xff,0x08,0x00,0x45,0x00,0x00,0x2c,0,2,0,0,64,6,0,0,10,0,0,2,10,0,0,1,0x30,0x39,0x08,0x01,0,0,0,1,0,0,0,1,0x50,0x18,0x20,0x00,0,0,0,0,'N','F','S','4'};
     if (zk_inspect_packet(&ctx, nfs_pkt, 58, NULL) != ZK_VERDICT_DROP) return 95;
+    struct zk_meta_norm_slot mslot;
+    memset(&mslot, 0, sizeof(mslot));
+    uint8_t mpkt[148];
+    memset(mpkt, 0, sizeof(mpkt));
+    if (zk_normalize_64b_gate(&mslot, 0x1111ULL, 0, 0x02, mpkt, 0) != 0) return 96;
+    if (zk_normalize_64b_gate(&mslot, 0x1111ULL, 0, 0x18, mpkt, 32) != 1) return 97;
+    if (zk_normalize_64b_gate(&mslot, 0x1111ULL, 0, 0x18, mpkt, 64) != 0) return 98;
+    *(mpkt + 0) = 1; *(mpkt + 4) = 0xAA;
+    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, mpkt, 148) != 0) return 99;
+    *(mpkt + 0) = 2; *(mpkt + 4) = 0x55; *(mpkt + 8) = 0xBB;
+    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, mpkt, 92) != 1) return 100;
+    *(mpkt + 8) = 0xAA;
+    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, mpkt, 92) != 0) return 101;
+    *(mpkt + 0) = 4; *(mpkt + 4) = 0x55; *(mpkt + 8) = 1;
+    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, mpkt, 32) != 1) return 102;
+    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, mpkt, 64) != 0) return 103;
     printf("[PASS] Universal GPFIFO+GPPut Ring & SWAR Fallback Self-Test OK\n");
     return 0;
 }
