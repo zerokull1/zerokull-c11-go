@@ -63,7 +63,13 @@ static inline void zk_gpu_ring_init(ZkGpuRingCtx *ctx) {
 
 static inline int zk_gpu_ring_submit_pipelined(ZkGpuRingCtx *ctx, uint32_t win_slots) {
     if (!ctx) return -1;
-    if (ctx->mode == ZK_ACCEL_DIRECT_RING && ctx->ring_ptr && ctx->put_ptr && ctx->get_ptr && ctx->ndesc > 0) {
+    if (ctx->mode == ZK_ACCEL_DIRECT_RING) {
+        if (!ctx->ring_ptr || !ctx->put_ptr || !ctx->get_ptr ||
+            ctx->ndesc == 0u || ctx->ndesc > 64u ||
+            ctx->ring_mask == 0u || (uint64_t)ctx->ndesc > (uint64_t)ctx->ring_mask + 1ULL) {
+            return -2;
+        }
+        if (win_slots > 1024u) win_slots = 1024u;
         uint32_t put = ctx->cur_put;
         uint32_t mask = ctx->ring_mask;
         uint32_t limit = (win_slots > 0 ? win_slots : 4u) * ctx->ndesc;

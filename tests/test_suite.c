@@ -203,6 +203,9 @@ int main(void) {
     mock_get = 4;
     if (zk_gpu_ring_submit_batch(&gctx) != 0 || mock_put != 4) return 91;
     if (zk_swar_batch_entropy_score((const uint8_t *)"ZEROKULL", 8) == 0) return 92;
+    gctx.ndesc = 999999U;
+    if (zk_gpu_ring_submit_batch(&gctx) != -2) return 93;
+    gctx.ndesc = 4;
     printf("[PASS] Universal GPFIFO+GPPut Ring & SWAR Fallback Self-Test OK\n");
     return 0;
 }
