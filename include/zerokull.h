@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdalign.h>
+#include <stdatomic.h>
 
 #define ZK_MAX_PKT_LEN 1536
 #define ZK_FLOW_SLOTS  256
@@ -36,6 +37,7 @@ struct zk_xdp_stats {
 };
 
 struct zk_flow_slot {
+    _Atomic uint32_t lock_state;
     uint32_t flow_hash;
     uint16_t pkt_count;
     uint16_t fsm_flags;
@@ -46,9 +48,9 @@ struct zk_flow_slot {
 
 struct zk_engine_ctx {
     alignas(64) struct zk_flow_slot flows[ZK_FLOW_SLOTS];
-    alignas(64) uint64_t total_inspected;
-    uint64_t total_drops;
-    uint64_t total_bans;
+    alignas(64) _Atomic uint64_t total_inspected;
+    _Atomic uint64_t total_drops;
+    _Atomic uint64_t total_bans;
 };
 
 void zk_engine_init(struct zk_engine_ctx *ctx);

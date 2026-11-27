@@ -191,14 +191,19 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
     uint32_t fid = zk_crc32c_u32(h2, p_canon);
     if (fid == 0) fid = 1U;
     struct zk_flow_slot *slot = &ctx->flows[fid & ZK_FLOW_MASK];
+    if (atomic_exchange_explicit(&slot->lock_state, 1U, memory_order_acquire) != 0U) return ZK_VERDICT_PASS;
+    enum zk_verdict res = ZK_VERDICT_PASS;
 
     if ((tcp_flags & 0x05U) != 0) {
         if (slot->flow_hash == fid && (slot->fsm_flags & 1U) != 0) {
-            memset(slot, 0, sizeof(*slot));
-            slot->ema_popcnt = 64;
-            return ZK_VERDICT_PASS;
+            slot->flow_hash = 0; slot->pkt_count = 0; slot->fsm_flags = 0;
+            slot->last_l7_len = 0; slot->same_len_streak = 0; slot->ema_popcnt = 64;
+            res = ZK_VERDICT_PASS;
+        } else {
+            res = ((tcp_flags & 0x04U) != 0) ? ZK_VERDICT_PASS : ZK_VERDICT_DROP;
         }
-        return ((tcp_flags & 0x04U) != 0) ? ZK_VERDICT_PASS : ZK_VERDICT_DROP;
+        atomic_store_explicit(&slot->lock_state, 0U, memory_order_release);
+        return res;
     }
 
     bool is_syn = (tcp_flags & 0x02U) != 0;
@@ -206,8 +211,14 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
     bool is_tls = (l7 && l7_len >= 5 && *(l7 + 0) == 0x16);
     uint16_t step_flags = (is_syn ? 1U : 0U) | (is_tls ? 2U : 0U) | ((l7_len >= 16) ? 4U : 0U) | ((!is_syn && is_ack && l7_len == 0) ? 8U : 0U);
 
-    if (slot->flow_hash != fid && slot->flow_hash != 0 && slot->pkt_count >= 8U) return ZK_VERDICT_PASS;
-    if (slot->flow_hash != fid && !is_syn && is_ack && l7_len == 0U) return ZK_VERDICT_DROP;
+    if (slot->flow_hash != fid && slot->flow_hash != 0 && slot->pkt_count >= 8U) {
+        atomic_store_explicit(&slot->lock_state, 0U, memory_order_release);
+        return ZK_VERDICT_PASS;
+    }
+    if (slot->flow_hash != fid && !is_syn && is_ack && l7_len == 0U) {
+        atomic_store_explicit(&slot->lock_state, 0U, memory_order_release);
+        return ZK_VERDICT_DROP;
+    }
     if (slot->flow_hash != fid || (is_syn && !is_ack)) {
         slot->flow_hash = fid;
         slot->pkt_count = 1;
@@ -219,13 +230,17 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
         } else {
             slot->ema_popcnt = 64;
         }
+        atomic_store_explicit(&slot->lock_state, 0U, memory_order_release);
         return ZK_VERDICT_PASS;
     }
 
     if (slot->pkt_count < 0xFFFFU) slot->pkt_count++;
     slot->fsm_flags |= step_flags;
 
-    if ((slot->fsm_flags & 4U) != 0 && (slot->fsm_flags & 11U) == 0 && slot->pkt_count >= 4) return ZK_VERDICT_DROP;
+    if ((slot->fsm_flags & 4U) != 0 && (slot->fsm_flags & 11U) == 0 && slot->pkt_count >= 4) {
+        atomic_store_explicit(&slot->lock_state, 0U, memory_order_release);
+        return ZK_VERDICT_DROP;
+    }
 
     if (l7 && l7_len >= 16) {
         uint16_t cur_len = (uint16_t)(l7_len > 0xFFFF ? 0xFFFF : l7_len);
@@ -240,12 +255,13 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
         uint32_t bits = (uint32_t)(__builtin_popcountll(rd_le64(l7)) + __builtin_popcountll(rd_le64(l7 + 8)));
         slot->ema_popcnt = (slot->pkt_count <= 2U) ? bits : ((slot->ema_popcnt * 3U + bits) >> 2);
         if ((slot->fsm_flags & 2U) == 0 && slot->pkt_count >= 12 && slot->same_len_streak >= 16 && slot->ema_popcnt >= 56 && slot->ema_popcnt <= 72) {
-            memset(slot, 0, sizeof(*slot));
-            slot->ema_popcnt = 64;
-            return ZK_VERDICT_BAN;
+            slot->flow_hash = 0; slot->pkt_count = 0; slot->fsm_flags = 0;
+            slot->last_l7_len = 0; slot->same_len_streak = 0; slot->ema_popcnt = 64;
+            res = ZK_VERDICT_BAN;
         }
     }
-    return ZK_VERDICT_PASS;
+    atomic_store_explicit(&slot->lock_state, 0U, memory_order_release);
+    return res;
 }
 
 enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt, size_t len, uint32_t *out_src_ip_be) {
@@ -253,18 +269,18 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     size_t l3_off = 14;
     uint16_t eth_proto = rd_be16(pkt + 12);
     for (int i = 0; i < 2 && (eth_proto == 0x8100 || eth_proto == 0x88A8); i++) {
-        if (len < l3_off + 24) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
+        if (len < l3_off + 24) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
         eth_proto = rd_be16(pkt + l3_off + 2);
         l3_off += 4;
     }
-    if (eth_proto == 0x8100 || eth_proto == 0x88A8) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
+    if (eth_proto == 0x8100 || eth_proto == 0x88A8) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
     if (eth_proto != 0x0800) return ZK_VERDICT_PASS;
 
     const uint8_t *ip = pkt + l3_off;
     size_t ip_avail = len - l3_off;
-    if (ip_avail < 20) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
+    if (ip_avail < 20) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
     uint16_t ip_tot = rd_be16(ip + 2);
-    if (ip_tot < 20 || (size_t)ip_tot > ip_avail) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
+    if (ip_tot < 20 || (size_t)ip_tot > ip_avail) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
     ip_avail = (size_t)ip_tot;
     uint32_t src_ip = 0, dst_ip = 0;
     memcpy(&src_ip, ip + 12, sizeof(src_ip));
@@ -272,11 +288,11 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     if (out_src_ip_be) *out_src_ip_be = src_ip;
 
     enum zk_verdict v = inspect_l3_guard(ip, ip_avail);
-    if (v != ZK_VERDICT_PASS) { ctx->total_inspected++; ctx->total_drops++; return v; }
+    if (v != ZK_VERDICT_PASS) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return v; }
 
     uint8_t proto = *(ip + 9);
     if (proto == 132U || proto == 33U || proto == 47U || proto == 21U) {
-        ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP;
+        atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP;
     }
     const uint8_t *l4 = ip + 20;
     size_t l4_avail = ip_avail - 20;
@@ -284,9 +300,9 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
         uint8_t tcp_flags = 0; const uint8_t *l7 = NULL; size_t l7_len = 0; uint32_t ports_word = 0;
 
     if (proto == 6) {
-        if (l4_avail < 20) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
+        if (l4_avail < 20) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
         uint8_t doff = (uint8_t)(((*(l4 + 12)) >> 4) * 4U);
-        if (doff < 20 || l4_avail < doff) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
+        if (doff < 20 || l4_avail < doff) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
         memcpy(&ports_word, l4, sizeof(ports_word));
         dport = rd_be16(l4 + 2); tcp_flags = *(l4 + 13); l7 = l4 + doff; l7_len = l4_avail - doff;
         uint16_t urg_ptr = rd_be16(l4 + 18);
@@ -294,16 +310,16 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
             ((tcp_flags & 0x29U) != 0U && (tcp_flags & 0x10U) == 0U) ||
             ((tcp_flags & 0x12U) == 0x02U && l7_len > 0U) ||
             (urg_ptr != 0U && (tcp_flags & 0x20U) == 0U) ||
-            ((tcp_flags & 0x20U) != 0U && (urg_ptr == 0U || (size_t)urg_ptr > l7_len))) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
+            ((tcp_flags & 0x20U) != 0U && (urg_ptr == 0U || (size_t)urg_ptr > l7_len))) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
     } else if (proto == 17) {
-        if (l4_avail < 8) { ctx->total_inspected++; ctx->total_drops++; return ZK_VERDICT_DROP; }
+        if (l4_avail < 8) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
         memcpy(&ports_word, l4, sizeof(ports_word));
         dport = rd_be16(l4 + 2); l7 = l4 + 8; l7_len = l4_avail - 8;
     }
-    ctx->total_inspected++;
+    atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed);
     if (dport == 135U || (dport >= 137U && dport <= 139U) || dport == 445U ||
         dport == 3389U || dport == 5355U || dport == 5985U || dport == 5986U) {
-        ctx->total_bans++;
+        atomic_fetch_add_explicit(&ctx->total_bans, 1ULL, memory_order_relaxed);
         return ZK_VERDICT_BAN;
     }
     v = inspect_l7_payload(proto, dport, l7, l7_len);
@@ -314,12 +330,20 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
             uint32_t p_sw = (ports_word >> 16) | (ports_word << 16);
             uint32_t fid = zk_crc32c_u32(zk_crc32c_u32(zk_crc32c_u32(0x5A45524FU, ip_lo), ip_hi), (ports_word < p_sw) ? ports_word : p_sw);
             struct zk_flow_slot *sl = &ctx->flows[(fid ? fid : 1U) & ZK_FLOW_MASK];
-            if ((sl->fsm_flags & 16U) != 0U) { memset(sl, 0, sizeof(*sl)); sl->ema_popcnt = 64; v = ZK_VERDICT_BAN; }
-            else { sl->fsm_flags |= 16U; }
+            if (atomic_exchange_explicit(&sl->lock_state, 1U, memory_order_acquire) == 0U) {
+                if ((sl->fsm_flags & 16U) != 0U) {
+                    sl->flow_hash = 0; sl->pkt_count = 0; sl->fsm_flags = 0;
+                    sl->last_l7_len = 0; sl->same_len_streak = 0; sl->ema_popcnt = 64;
+                    v = ZK_VERDICT_BAN;
+                } else {
+                    sl->fsm_flags |= 16U;
+                }
+                atomic_store_explicit(&sl->lock_state, 0U, memory_order_release);
+            }
         }
     }
-    if (v == ZK_VERDICT_DROP) ctx->total_drops++;
-    else if (v == ZK_VERDICT_BAN) { ctx->total_drops++; ctx->total_bans++; }
+    if (v == ZK_VERDICT_DROP) atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed);
+    else if (v == ZK_VERDICT_BAN) { atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_bans, 1ULL, memory_order_relaxed); }
     return v;
 }
 
