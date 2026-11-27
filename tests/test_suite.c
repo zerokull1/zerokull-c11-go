@@ -214,18 +214,18 @@ int main(void) {
     memset(&mslot, 0, sizeof(mslot));
     uint8_t mpkt[148];
     memset(mpkt, 0, sizeof(mpkt));
-    if (zk_normalize_64b_gate(&mslot, 0x1111ULL, 0, 0x02, mpkt, 0) != 0) return 96;
-    if (zk_normalize_64b_gate(&mslot, 0x1111ULL, 0, 0x18, mpkt, 32) != 1) return 97;
-    if (zk_normalize_64b_gate(&mslot, 0x1111ULL, 0, 0x18, mpkt, 64) != 0) return 98;
+    if (zk_normalize_64b_gate(&mslot, 0x1111ULL, 0, 1, 0x02, mpkt, 0) != 0) return 96;
+    if (zk_normalize_64b_gate(&mslot, 0x1111ULL, 0, 1, 0x18, mpkt, 32) != 1) return 97;
+    if (zk_normalize_64b_gate(&mslot, 0x1111ULL, 0, 1, 0x18, mpkt, 64) != 0) return 98;
     *(mpkt + 0) = 1; *(mpkt + 4) = 0xAA;
-    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, mpkt, 148) != 0) return 99;
+    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, 0, mpkt, 148) != 0) return 99;
     *(mpkt + 0) = 2; *(mpkt + 4) = 0x55; *(mpkt + 8) = 0xBB;
-    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, mpkt, 92) != 1) return 100;
+    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, 0, mpkt, 92) != 1) return 100;
     *(mpkt + 8) = 0xAA;
-    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, mpkt, 92) != 0) return 101;
+    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, 0, mpkt, 92) != 0) return 101;
     *(mpkt + 0) = 4; *(mpkt + 4) = 0x55; *(mpkt + 8) = 1;
-    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, mpkt, 32) != 1) return 102;
-    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, mpkt, 64) != 0) return 103;
+    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, 0, mpkt, 32) != 1) return 102;
+    if (zk_normalize_64b_gate(&mslot, 0x2222ULL, 1, 0, 0, mpkt, 64) != 0) return 103;
     printf("[PASS] Universal GPFIFO+GPPut Ring & SWAR Fallback Self-Test OK\n");
     return 0;
 }

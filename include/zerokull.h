@@ -102,6 +102,7 @@ uint8_t zk_normalize_64b_gate(
     struct zk_meta_norm_slot *slot,
     uint64_t hash,
     uint8_t is_udp,
+    uint8_t is_cleartext_http,
     uint8_t tcp_flags,
     const uint8_t *l7,
     size_t l7_len
