@@ -47,7 +47,7 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
     for (int i = 0; i < 2; i++) {
         if (h_proto == bpf_htons(ETH_P_8021Q) || h_proto == bpf_htons(ETH_P_8021AD)) {
             struct zk_vlan_hdr *vh = nh;
-            if ((void *)(vh + 1) > data_end) { ZK_DROP_ACTION(st); }
+            if ((void *)(vh + 1) > data_end || (bpf_ntohs(vh->h_vlan_TCI) & 0x0FFF) == 0) { ZK_DROP_ACTION(st); }
             h_proto = vh->h_vlan_encapsulated_proto;
             nh = (void *)(vh + 1);
         }
@@ -106,7 +106,7 @@ int zerokull_xdp_guard(struct xdp_md *ctx)
     }
     if (iph->protocol == 6) {
         struct tcphdr *tcph = (void *)(iph + 1);
-        if ((void *)(tcph + 1) > data_end || tcph->doff < 5) { ZK_DROP_ACTION(st); }
+        if ((void *)(tcph + 1) > data_end || tcph->doff < 5 || tcph->dest == bpf_htons(2049)) { ZK_DROP_ACTION(st); }
         __u8 fl = ((__u8 *)tcph)[13];
         __u16 urg = bpf_ntohs(tcph->urg_ptr);
         if (fl == 0 || (fl & 0x03) == 0x03 || (fl & 0x06) == 0x06 || (fl & 0x05) == 0x05 ||

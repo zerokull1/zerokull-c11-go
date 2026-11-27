@@ -87,6 +87,7 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
     if (dport == 135U || (dport >= 137U && dport <= 139U) || dport == 445U || dport == 3389U || dport == 5355U || dport == 5985U || dport == 5986U) {
         return ZK_VERDICT_BAN;
     }
+    if (proto == 6 && dport == 2049U) return ZK_VERDICT_DROP;
     if (proto == 6 && (dport == 102 || dport == 502 || dport == 2404) && l7_len < 6) return ZK_VERDICT_DROP;
     if (proto == 6 && l7_len >= 5 && *(l7 + 0) == 0x16) {
         uint16_t ver = rd_be16(l7 + 1);
@@ -294,7 +295,7 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
     size_t l3_off = 14;
     uint16_t eth_proto = rd_be16(pkt + 12);
     for (int i = 0; i < 2 && (eth_proto == 0x8100 || eth_proto == 0x88A8); i++) {
-        if (len < l3_off + 24) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
+        if (len < l3_off + 24 || (rd_be16(pkt + l3_off) & 0x0FFFU) == 0U) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
         eth_proto = rd_be16(pkt + l3_off + 2);
         l3_off += 4;
     }
