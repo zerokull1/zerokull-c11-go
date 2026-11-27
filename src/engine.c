@@ -352,22 +352,44 @@ enum zk_verdict zk_exec_millicode(const uint16_t *code, size_t n_insns, const ui
     uint32_t r[8] = {0};
     r[0] = (uint32_t)base_v;
     r[1] = (uint32_t)(len > 0xFFFFU ? 0xFFFFU : len);
-    size_t steps = n_insns > 32U ? 32U : n_insns;
-    for (size_t pc = 0; pc < steps; pc++) {
-        uint16_t ins = code[pc];
-        uint8_t op  = (uint8_t)(ins >> 12);
-        uint8_t dst = (uint8_t)((ins >> 9) & 0x07U);
-        uint8_t src = (uint8_t)((ins >> 6) & 0x07U);
-        uint8_t imm = (uint8_t)(ins & 0xFFU);
-        switch (op) {
-            case 0x1: r[dst] = imm; break;
-            case 0x2: r[dst] ^= r[src]; break;
-            case 0x3: r[dst] = (pkt && (size_t)imm < len) ? (uint32_t)pkt[imm] : 0U; break;
-            case 0x4: r[0] = (r[dst] == r[src]) ? (uint32_t)ZK_VERDICT_BAN : r[0]; break;
-            case 0x5: r[0] = (r[dst] < (uint32_t)imm) ? (uint32_t)ZK_VERDICT_DROP : r[0]; break;
-            case 0xF: pc = steps; break;
-            default: break;
+    uint32_t active = 0xFFFFFFFFU;
+    for (size_t pc = 0; pc < 32U; pc++) {
+        uint32_t in_bounds = (pc < n_insns) ? 0xFFFFFFFFU : 0U;
+        size_t safe_pc = (pc < n_insns) ? pc : 0U;
+        uint16_t ins = code[safe_pc];
+        uint32_t op  = (uint32_t)(ins >> 12);
+        uint32_t dst = (uint32_t)((ins >> 9) & 0x07U);
+        uint32_t src = (uint32_t)((ins >> 6) & 0x07U);
+        uint32_t imm = (uint32_t)(ins & 0xFFU);
+
+        uint32_t is_halt = (op == 0xFU) ? 0xFFFFFFFFU : 0U;
+        active &= in_bounds & ~is_halt;
+
+        uint32_t v_dst = 0U, v_src = 0U;
+        for (uint32_t k = 0; k < 8U; k++) {
+            v_dst |= r[k] & ((k == dst) ? 0xFFFFFFFFU : 0U);
+            v_src |= r[k] & ((k == src) ? 0xFFFFFFFFU : 0U);
         }
+        uint32_t pkt_ok = (pkt != NULL && (size_t)imm < len) ? 0xFFFFFFFFU : 0U;
+        size_t safe_imm = ((size_t)imm < len && pkt != NULL) ? (size_t)imm : 0U;
+        uint32_t b_val = pkt ? ((uint32_t)pkt[safe_imm] & pkt_ok) : 0U;
+
+        uint32_t m1 = (op == 0x1U) ? 0xFFFFFFFFU : 0U;
+        uint32_t m2 = (op == 0x2U) ? 0xFFFFFFFFU : 0U;
+        uint32_t m3 = (op == 0x3U) ? 0xFFFFFFFFU : 0U;
+        uint32_t m4 = (op == 0x4U) ? 0xFFFFFFFFU : 0U;
+        uint32_t m5 = (op == 0x5U) ? 0xFFFFFFFFU : 0U;
+
+        uint32_t next_dst = (v_dst & ~(m1 | m2 | m3)) | (imm & m1) | ((v_dst ^ v_src) & m2) | (b_val & m3);
+        uint32_t eq_ban = (v_dst == v_src) ? (uint32_t)ZK_VERDICT_BAN : r[0];
+        uint32_t lt_drp = (v_dst < imm) ? (uint32_t)ZK_VERDICT_DROP : r[0];
+        uint32_t next_r0 = (r[0] & ~(m4 | m5)) | (eq_ban & m4) | (lt_drp & m5);
+
+        for (uint32_t k = 0; k < 8U; k++) {
+            uint32_t is_d = (k == dst) ? active : 0U;
+            r[k] = (r[k] & ~is_d) | (next_dst & is_d);
+        }
+        r[0] = (r[0] & ~active) | (next_r0 & active);
     }
     return (r[0] <= (uint32_t)ZK_VERDICT_BAN) ? (enum zk_verdict)r[0] : ZK_VERDICT_DROP;
 }
