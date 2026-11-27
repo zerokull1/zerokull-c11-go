@@ -197,5 +197,5 @@ Every installation runs `./build/test_suite` and enforces cryptographic `sha256s
 ```bash
 sudo apt update && sudo apt install -y build-essential clang llvm libbpf-dev libelf-dev zlib1g-dev bpftool
 make c-only && ./build/test_suite
-sudo ./build/zerokull-daemon -i eth0 --shadow
+sudo ./build/zerokull-daemon eth0 --shadow
 ```
