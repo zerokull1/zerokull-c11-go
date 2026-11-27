@@ -75,3 +75,8 @@ uninstall:
 
 clean:
 	rm -rf build
+
+c-only: build/xdp_guard.skel.h
+	$(CC) $(CFLAGS) -Iinclude -Ibuild src/daemon.c src/engine.c src/zk_gpu_ring.c -DZK_NO_RUST_POLICY -o build/zerokull-daemon -Wl,--gc-sections -s -lbpf -lelf -lz -ldl
+	$(CC) $(CFLAGS) -Iinclude -Ibuild src/stat.c -o build/zerokull-stat -Wl,--gc-sections -s
+	$(CC) $(CFLAGS) -Iinclude -Ibuild tests/test_suite.c src/engine.c src/zk_gpu_ring.c -o build/test_suite -Wl,--gc-sections -s -ldl

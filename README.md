@@ -191,3 +191,11 @@ Every installation runs `./build/test_suite` and enforces cryptographic `sha256s
 ### CMS/PHP Deserialization & User-Space Lateral Port Guard
 - **SWAR CMS & PHP Object Injection Filter:** Blocks `/install.php`, `/update.php`, `X-Original-URL` path overrides, `phar://` wrappers, and raw/URL-encoded serialized payloads (`O:<digit>:`, `C:<digit>:`, `O%3A`, `C%3A`) with zero heap allocations.
 - **Defense-in-Depth Lateral Movement Ban:** Mirrors XDP East-West port bans (`135`, `137-139`, `445`, `3389`, `5355`, `5985-5986` -> `ZK_VERDICT_BAN`) directly inside user-space `zk_inspect_packet()`.
+
+## Fast VPS / Server Build (C11 + eBPF only, no Rust/Go required)
+
+```bash
+sudo apt update && sudo apt install -y build-essential clang llvm libbpf-dev libelf-dev zlib1g-dev bpftool
+make c-only && ./build/test_suite
+sudo ./build/zerokull-daemon -i eth0 --shadow
+```
