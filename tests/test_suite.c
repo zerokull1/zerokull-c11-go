@@ -167,21 +167,29 @@ int main(void) {
         }
     }
 
-    /* Regression test: CVE-2026-133469 empty JSON token in Authorization header */
+    /* Regression tests: CVE-2026-133469 (Bugs #76, #77, #78: header-only, %7b%7d, { } whitespace, JSON body NO-FP) */
     {
-        const char *req = "GET /api/v1/session HTTP/1.1\r\nHost: example.com\r\nAuthorization: Bearer {}\r\n\r\n";
-        uint8_t p[256] = {0};
-        uint32_t sip = 0U;
-        p[1] = 1; p[7] = 2; p[12] = 0x08; p[13] = 0x00;
-        p[14] = 0x45; p[19] = 1; p[22] = 64; p[23] = 6;
-        p[26] = 10; p[29] = 90; p[30] = 10; p[33] = 1;
-        p[34] = 0x1f; p[35] = 0x90; p[36] = 0x00; p[37] = 0x50;
-        p[41] = 1; p[45] = 1; p[46] = 0x50; p[47] = 0x18; p[48] = 0x20;
-        size_t pl = strlen(req);
-        uint16_t tot = (uint16_t)(40U + pl);
-        p[16] = (uint8_t)(tot >> 8); p[17] = (uint8_t)tot;
-        memcpy(p + 54, req, pl);
-        assert(zk_inspect_packet(&ctx, p, 54U + pl, &sip) == ZK_VERDICT_BAN);
+        const char *cases[4] = {
+            "GET /api/session HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {}\r\n\r\n",
+            "GET /api/session HTTP/1.1\r\nHost: x\r\nCookie: tok=%7b%7d\r\n\r\n",
+            "GET /api/session HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer { }\r\n\r\n",
+            "POST /api/query HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer eyJhbGci.valid.sig\r\nContent-Length: 13\r\n\r\n{\"filter\":{}}"
+        };
+        const enum zk_verdict exp[4] = { ZK_VERDICT_BAN, ZK_VERDICT_BAN, ZK_VERDICT_BAN, ZK_VERDICT_PASS };
+        for (size_t k = 0; k < 4; k++) {
+            uint8_t p[256] = {0};
+            uint32_t sip = 0U;
+            p[1] = 1; p[7] = 2; p[12] = 0x08; p[13] = 0x00;
+            p[14] = 0x45; p[19] = 1; p[22] = 64; p[23] = 6;
+            p[26] = 10; p[29] = (uint8_t)(90U + k); p[30] = 10; p[33] = 1;
+            p[34] = 0x1f; p[35] = 0x90; p[36] = 0x00; p[37] = 0x50;
+            p[41] = 1; p[45] = 1; p[46] = 0x50; p[47] = 0x18; p[48] = 0x20;
+            size_t pl = strlen(cases[k]);
+            uint16_t tot = (uint16_t)(40U + pl);
+            p[16] = (uint8_t)(tot >> 8); p[17] = (uint8_t)tot;
+            memcpy(p + 54, cases[k], pl);
+            assert(zk_inspect_packet(&ctx, p, 54U + pl, &sip) == exp[k]);
+        }
     }
 
     ZkGpuRingCtx gctx;

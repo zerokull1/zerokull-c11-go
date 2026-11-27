@@ -264,22 +264,49 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
     return res;
 }
 
-/* CVE-2026-133469: branchless SWAR check for empty JSON token "{}" / "%7b%7d" in Auth/Cookie */
+/* CVE-2026-133469: header-bounded branchless SWAR check for empty JSON token in Auth/Cookie */
 static inline uint32_t zk_check_empty_json_token_swar(const uint8_t *p, uint32_t len) {
     if (len < 16U) return 0U;
     uint32_t scan = len > 512U ? 512U : len;
+    /* Ограничиваем поиск строго зоной HTTP-заголовков до \r\n\r\n (0x0A0D0A0D) */
+    for (uint32_t i = 0U; i + 4U <= scan; i++) {
+        if (rd_le32(p + i) == 0x0A0D0A0DU) {
+            scan = i;
+            break;
+        }
+    }
+    if (scan < 12U) return 0U;
     uint32_t has_auth = 0U;
     uint32_t has_empty_obj = 0U;
-    for (uint32_t i = 0U; i + 8U <= scan; i++) {
-        uint64_t w = rd_le64(p + i);
-        uint64_t up = w & 0xDFDFDFDFDFDFDFDFULL;
-        has_auth |= (uint32_t)(up == 0x5A49524F48545541ULL) |
-                    (uint32_t)((up & 0x0000FFFFFFFFFFFFULL) == 0x000045494B4F4F43ULL);
-        uint64_t b6_raw = w & 0x0000DF00FFDF00FFULL;
-        has_empty_obj |= (uint32_t)(b6_raw == 0x0000443725423725ULL);
+    for (uint32_t i = 0U; i + 6U <= scan; i++) {
+        uint64_t up6 = 0ULL;
+        if (i + 8U <= scan) {
+            uint64_t w = rd_le64(p + i);
+            uint64_t up = w & 0xDFDFDFDFDFDFDFDFULL;
+            has_auth |= (uint32_t)(up == 0x5A49524F48545541ULL);
+            up6 = up;
+        } else {
+            for (uint32_t k = 0U; k < 6U; k++) up6 |= ((uint64_t)(p[i + k] & 0xDFU)) << (k * 8U);
+        }
+        has_auth |= (uint32_t)((up6 & 0x0000FFFFFFFFFFFFULL) == 0x000045494B4F4F43ULL);
+        /* Проверка %7b%7d / %7B%7D вплоть до последнего байта заголовков */
+        uint64_t raw6 = ((uint64_t)p[i]) |
+                        ((uint64_t)p[i + 1U] << 8) |
+                        ((uint64_t)(p[i + 2U] & 0xDFU) << 16) |
+                        ((uint64_t)p[i + 3U] << 24) |
+                        ((uint64_t)p[i + 4U] << 32) |
+                        ((uint64_t)(p[i + 5U] & 0xDFU) << 40);
+        has_empty_obj |= (uint32_t)(raw6 == 0x0000443725423725ULL);
     }
-    for (uint32_t i = 0U; i + 2U <= scan; i++) {
-        has_empty_obj |= (uint32_t)(p[i] == '{' && p[i + 1U] == '}');
+    /* Проверка '{}' с любым числом пробелов/табов '{   }' внутри заголовка */
+    uint32_t in_brace = 0U;
+    for (uint32_t i = 0U; i < scan; i++) {
+        uint8_t c = p[i];
+        uint32_t is_open = (uint32_t)(c == '{');
+        uint32_t is_close = (uint32_t)(c == '}');
+        uint32_t is_ws = (uint32_t)(c == ' ' || c == '\t');
+        has_empty_obj |= in_brace & is_close;
+        in_brace = is_open | (in_brace & is_ws);
     }
     return has_auth & has_empty_obj;
 }
