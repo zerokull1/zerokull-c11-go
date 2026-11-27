@@ -216,8 +216,18 @@ int main(int argc, char **argv) {
     printf("[zerokull] active on %s (attached_nics=%u, mode=%s, shm=/dev/shm%s)\n",
            mode_label, attached, shadow_mode ? "SHADOW_DROP(DRY-RUN)" : "BPF_LINK_XDP_ENFORCE", ZK_SHM_NAME);
     fflush(stdout);
+    uint64_t zk_jseed = 0x5A45524F4B554C4CULL ^ (uint64_t)getpid();
     while (!g_stop) {
-        if (ring_buffer__poll(rb, 100) < 0 && errno != EINTR) break;
+        zk_jseed ^= zk_jseed << 13;
+        zk_jseed ^= zk_jseed >> 7;
+        zk_jseed ^= zk_jseed << 17;
+        int poll_ms = 100 + (int)(zk_jseed & 1ULL);
+        int rc_poll = ring_buffer__poll(rb, poll_ms);
+        if (rc_poll < 0 && errno != EINTR) break;
+        if (rc_poll == 0) {
+            struct timespec jts = { .tv_sec = 0, .tv_nsec = 150000L + (long)(zk_jseed % 700001ULL) };
+            nanosleep(&jts, NULL);
+        }
         if (g_reload) {
             g_reload = 0;
             if (zk_policy_load(policy_path, &pol_cur) == 0 && pol_cur.loaded) {
