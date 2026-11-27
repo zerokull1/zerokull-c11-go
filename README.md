@@ -199,3 +199,6 @@ sudo apt update && sudo apt install -y build-essential clang llvm libbpf-dev lib
 make c-only && ./build/test_suite
 sudo ./build/zerokull-daemon eth0 --shadow
 ```
+
+### Edge XDP & L7 Hardening (27 Nov 2026)
+- **Kernel NFS2ROOT (`CVE-2026-99362`) & VLAN `VID == 0` (`CVE-2026-99805`) Guard:** Early `XDP_DROP` on `TCP/2049` and `VID == 0` 802.1Q/802.1AD frames in `bpf/xdp_guard.bpf.c` and `src/engine.c`, plus TLS 1.3 `0x17` micro-record flood and padded IPv6 extension header filtering (**ASan + UBSan + `-fanalyzer` + `-Werror`** verified).
