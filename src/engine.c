@@ -143,7 +143,8 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
                 uint32_t hit_dbl_slash = (uint32_t)((w & 0xFFFFU) == 0x2F2FU || (w & 0xFFU) == 0x5CU);
                 uint32_t w_lo = w | 0x00202000U;
                 uint32_t hit_pct = (uint32_t)((w_lo & 0x00FFFFFFU) == 0x00653225U || (w_lo & 0x00FFFFFFU) == 0x00663225U ||
-                                              (w_lo & 0x00FFFFFFU) == 0x00633525U || (w_lo & 0x00FFFFFFU) == 0x00303025U);
+                                              (w_lo & 0x00FFFFFFU) == 0x00633525U || (w_lo & 0x00FFFFFFU) == 0x00303025U ||
+                                              w == 0x32353225U);
                 uint32_t hit_nul = (uint32_t)(((w - 0x01010101U) & ~w & 0x80808080U) != 0U);
                 bad |= hit_semi | hit_slash | hit_dbl_slash | hit_pct | hit_nul;
             }
@@ -159,6 +160,8 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
                     if (hw_up == 0x0D544E45544E4F43ULL && (hw2 & 0x0000DFDFDFDFDFDFULL) == 0x00004854474E454CULL && *(l7 + h + 14U) == ':') has_cl++;
                     if (hw_up == 0x524546534E415254ULL && (hw2 & 0xDFDFDFDFDFDFDFDFULL) == 0x4E49444F434E450DULL && (*(l7 + h + 16U) & 0xDFU) == 'G' && *(l7 + h + 17U) == ':') has_te++;
                     if ((hw_up & 0x00FFFFFFFFFFFFFFULL) == 0x0045444152475055ULL && *(l7 + h + 7U) == ':') has_upg++;
+                    if (hw_up == 0x4E494749524F0D58ULL || hw_up == 0x5449525745520D58ULL) return ZK_VERDICT_BAN;
+                    if (hw_up == 0x4E494749524F2D58ULL || hw_up == 0x5449525745522D58ULL) return ZK_VERDICT_BAN;
                     if ((hw_up & 0x00000000FFFFFFFFULL) == 0x0000000054534F48ULL && *(l7 + h + 4U) == ':') {
                         size_t v = h + 5U;
                         while (v < scan_lim && (*(l7 + v) == ' ' || *(l7 + v) == '	')) v++;
@@ -171,8 +174,12 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
                 for (size_t b = uri_start; b <= body_lim; b++) {
                     if (rd_le32(l7 + b) == 0x0A0D0A0DU && b + 8U <= l7_len) {
                         if (has_te != 0U) { size_t clim = (l7_len < b + 68U) ? l7_len : (b + 68U); for (size_t c = b + 4U; c < clim; c++) { uint8_t ch = *(l7 + c); if (ch == ';') return ZK_VERDICT_BAN; if (ch == '\r') break; if (!((ch >= '0' && ch <= '9') || ((ch | 0x20U) >= 'a' && (ch | 0x20U) <= 'f'))) return ZK_VERDICT_BAN; } }
-                        uint32_t sig = rd_le32(l7 + b + 4U);
-                        if (sig == 0x6D783F3CU || sig == 0x4F44213CU || sig == 0x41304F72U || sig == 0x0500EDACU) return ZK_VERDICT_BAN;
+                        size_t bo = b + 4U;
+                        while (bo + 4U <= l7_len && bo < b + 20U && (*(l7 + bo) == ' ' || *(l7 + bo) == '\t' || *(l7 + bo) == '\r' || *(l7 + bo) == '\n')) bo++;
+                        if (bo + 4U <= l7_len) {
+                            uint32_t sig = rd_le32(l7 + bo);
+                            if (sig == 0x6D783F3CU || sig == 0x4F44213CU || sig == 0x4E45213CU || sig == 0x41304F72U || sig == 0x0500EDACU) return ZK_VERDICT_BAN;
+                        }
                         break;
                     }
                 }

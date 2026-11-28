@@ -147,6 +147,19 @@ int main(void) {
         cf_pkt[48] = 0x00; cf_pkt[49] = 0x20; /* raw tcp_win = 32 (scaled window) */
         assert(zk_inspect_packet(&ctx, cf_pkt, cf_len, &sip_cf) == ZK_VERDICT_PASS);
     }
+        /* Regression: Transit CISA KEV (Double-encoded %252e traversal, X-Rewrite-URL, padded XXE -> BAN, FP=0) */
+    {
+        uint32_t sip_tr = 0;
+        uint8_t tr_pkt[512] = {0};
+        const char *m_dbl = "GET /npm-pwg/%252e%252e/etc/passwd HTTP/1.1\r\nHost: mitel.local\r\n\r\n";
+        const char *m_xrw = "GET /api/v1/status HTTP/1.1\r\nHost: juniper.local\r\nX-Rewrite-URL: /admin\r\n\r\n";
+        const char *m_xxe = "POST /xmlrpc HTTP/1.1\r\nHost: danfoss.local\r\nContent-Length: 32\r\n\r\n  \n<!DOCTYPE foo SYSTEM \"x\">";
+        const char *m_ok  = "POST /api/v1/telemetry HTTP/1.1\r\nHost: edge.local\r\nContent-Length: 18\r\n\r\n{\"status\":\"ready\"}";
+        assert(zk_inspect_packet(&ctx, tr_pkt, build_tcp(tr_pkt, 0x0B01010AU, 51001, 80, 64, 0x18, (const uint8_t *)m_dbl, strlen(m_dbl)), &sip_tr) == ZK_VERDICT_BAN);
+        assert(zk_inspect_packet(&ctx, tr_pkt, build_tcp(tr_pkt, 0x0C01010AU, 51002, 80, 64, 0x18, (const uint8_t *)m_xrw, strlen(m_xrw)), &sip_tr) == ZK_VERDICT_BAN);
+        assert(zk_inspect_packet(&ctx, tr_pkt, build_tcp(tr_pkt, 0x0D01010AU, 51003, 80, 64, 0x18, (const uint8_t *)m_xxe, strlen(m_xxe)), &sip_tr) == ZK_VERDICT_BAN);
+        assert(zk_inspect_packet(&ctx, tr_pkt, build_tcp(tr_pkt, 0x0E01010AU, 51004, 80, 64, 0x18, (const uint8_t *)m_ok, strlen(m_ok)), &sip_tr) == ZK_VERDICT_PASS);
+    }
     printf("[TEST PASS] inspected=%llu drops=%llu bans=%llu\n",
            (unsigned long long)ctx.total_inspected,
            (unsigned long long)ctx.total_drops,
