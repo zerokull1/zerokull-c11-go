@@ -208,3 +208,7 @@ sudo ./build/zerokull-daemon eth0 --shadow
 - **Hardened L7 & WireGuard Anti-Replay (Nov 2026):** Universal HTTP `CRLFCRLF` boundary validation paired with `RFC 6479` 64-packet sliding-window replay protection resilient to wireless jitter.
 
 - **Full-Stack RFC Resilience (1969–2026 Verified, Nov 2026):** Validated across 1.4M frames spanning legacy transport constraints (`RFC 33/36`, `RFC 791/793`) to modern `QUIC`, `RFC 6479` anti-replay, `TCP Window >= 64` enforcement, and `TCP/2049` perimeter isolation (`0%` false positives).
+
+## 100% OS-Free DMA Entry (`zk_bare_metal_transit_step`)
+
+- **Zero-OS Packet Path:** Direct C11 entry `zk_bare_metal_transit_step(ctx, frame, len, &src_ip)` operates directly over raw DMA ring buffers with **0 syscalls, 0 `sk_buff`, and 0 OS kernel dependencies** (`-Wall -Wextra -Werror`, `gcc -fanalyzer`, ASan + UBSan verified).
