@@ -5,7 +5,7 @@
 ## Архитектура и характеристики
 
 * **1. Kernel Space (eBPF XDP):** Блокировки по черному списку (LRU Hash), белый список и Zero-Copy Ringbuf (256 KB).
-* **2. Data-Plane (ISO C11 + 16-bit Millicode VM):** Программируемые 16-битные микропрограммы политики (`zk_exec_millicode`), Инспекция L2–L7 (TLS, HTTP/2, SMB1), stateful-таблица потоков и производительность **84.82 Mpps**.
+* **2. Data-Plane (ISO C11 + 16-bit Millicode VM):** Программируемые 16-битные микропрограммы политики (`zk_exec_millicode`), Инспекция L2–L7 (TLS, HTTP/2, SMB1), stateful-таблица потоков; **вычислительный бюджет ядра в L1-кэше: 84.82 Mpps** (`~43.6 такта/пакет` на `i5-4590`, чистая SWAR-инспекция без NIC/PCIe I/O; физический потолок провода `10GbE Native XDP` на Haswell `PCIe 3.0 + DDR3` составляет `~10–14.88 Mpps`).
 * **3. Control-Plane (Go 1.22+):** Статическая CLI-утилита `zerokull-ctl` с поддержкой Prometheus `/metrics` и JSON API.
 
 ## Быстрый старт
