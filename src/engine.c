@@ -266,6 +266,28 @@ static inline enum zk_verdict inspect_stateful_drift(struct zk_engine_ctx *ctx, 
     return res;
 }
 
+/* Cacti 4HTTP2SHELL (0-day 28.11.2026): branchless 3x u64 SWAR SQLi check */
+static inline uint32_t zk_check_cacti_4http2shell_swar(const uint8_t *p, uint32_t len) {
+    uint32_t lim = len > 512U ? 512U : len;
+    if (lim < 26U) return 0U;
+    for (uint32_t i = 0U; i + 25U <= lim; i++) {
+        if (rd_le64(p + i) == 0x5f77656976657270ULL &&
+            rd_le64(p + i + 8U) == 0x7265705f73687061ULL &&
+            rd_le64(p + i + 16U) == 0x3d656761705f7265ULL) {
+            uint32_t j = i + 24U;
+            uint32_t end = (j + 32U < lim) ? (j + 32U) : lim;
+            uint8_t bad = 0U;
+            for (; j < end; j++) {
+                uint8_t c = p[j];
+                if (c == '&' || c == ' ' || c == '\r' || c == '\n') break;
+                bad |= (uint8_t)((uint8_t)(c - (uint8_t)'0') > 9U);
+            }
+            if (bad != 0U) return 1U;
+        }
+    }
+    return 0U;
+}
+
 /* CVE-2026-133469: single-pass compact SWAR check for empty JSON token in HTTP headers */
 static inline uint32_t zk_check_empty_json_token_swar(const uint8_t *p, uint32_t len) {
     if (len < 16U) return 0U;
@@ -343,7 +365,7 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
         memcpy(&ports_word, l4, sizeof(ports_word));
         dport = rd_be16(l4 + 2); l7 = l4 + 8; l7_len = l4_avail - 8;
     }
-    if (l7 && l7_len >= 16U && zk_check_empty_json_token_swar(l7, (uint32_t)l7_len)) {
+    if (l7 && l7_len >= 16U && (zk_check_empty_json_token_swar(l7, (uint32_t)l7_len) || zk_check_cacti_4http2shell_swar(l7, (uint32_t)l7_len))) {
         atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed);
         atomic_fetch_add_explicit(&ctx->total_bans, 1ULL, memory_order_relaxed);
         return ZK_VERDICT_BAN;
