@@ -579,20 +579,30 @@ uint8_t zk_normalize_64b_gate(
             & (same_flow == 1U) & (slot->state == 1U) & (idx2 == cli_idx));
 
         uint8_t idx_ok = (uint8_t)((idx1 == srv_idx) | (idx1 == cli_idx));
-        uint8_t ctr_ok = (uint8_t)((ctr >= slot->seq_or_ctr) | ((slot->seq_or_ctr - ctr) <= 2048ULL));
+        uint8_t ctr_new = (uint8_t)(ctr > slot->seq_or_ctr);
+        uint64_t diff = slot->seq_or_ctr - ctr;
+        uint8_t ctr_win = (uint8_t)((ctr <= slot->seq_or_ctr) & (diff < 64ULL) & (((slot->replay_win >> (diff & 63U)) & 1ULL) == 0ULL));
         uint8_t is_data = (uint8_t)((msg_type == 4U) & (l7_len >= 64U) & ((l7_len & 15U) == 0U) & (rsv_ok == 1U)
-            & (same_flow == 1U) & (slot->state == 2U) & (idx_ok == 1U) & (ctr_ok == 1U));
+            & (same_flow == 1U) & (slot->state == 2U) & (idx_ok == 1U) & ((ctr_new | ctr_win) == 1U));
 
         if (is_init == 1U) {
             slot->flow_hash = hash;
             slot->meta_anchor = (uint64_t)idx1;
             slot->seq_or_ctr = 0ULL;
+            slot->replay_win = 0ULL;
             slot->state = 1U;
         } else if (is_resp == 1U) {
             slot->meta_anchor = ((uint64_t)idx1 << 32) | (uint64_t)cli_idx;
+            slot->replay_win = 0ULL;
             slot->state = 2U;
-        } else if (is_data == 1U && ctr > slot->seq_or_ctr) {
-            slot->seq_or_ctr = ctr;
+        } else if (is_data == 1U) {
+            if (ctr_new == 1U) {
+                uint64_t sh = ctr - slot->seq_or_ctr;
+                slot->replay_win = (sh >= 64ULL) ? 1ULL : ((slot->replay_win << sh) | 1ULL);
+                slot->seq_or_ctr = ctr;
+            } else {
+                slot->replay_win |= (1ULL << (diff & 63U));
+            }
         }
         return (uint8_t)((is_init | is_resp | is_cook | is_data) ^ 1U);
     }
@@ -606,7 +616,13 @@ uint8_t zk_normalize_64b_gate(
     if (slot->flow_hash != hash || slot->state == 0U) return 1U;
     if (l7_len > 0U && slot->state == 1U) {
         if (!l7) return 1U;
-        if (is_cleartext_http && l7_len < 64U && (tcp_flags & 0x01U) == 0U) return 1U;
+        if (is_cleartext_http && l7_len < 64U && (tcp_flags & 0x01U) == 0U) {
+            uint8_t has_crlf = 0U;
+            for (size_t j = 4U; j + 4U <= l7_len; j++) {
+                if (rd_le32(l7 + j) == 0x0A0D0A0DU) { has_crlf = 1U; break; }
+            }
+            if (!has_crlf) return 1U;
+        }
         slot->state = 2U;
     }
     return 0U;

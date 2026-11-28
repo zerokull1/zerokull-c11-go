@@ -94,6 +94,7 @@ struct __attribute__((aligned(64))) zk_meta_norm_slot {
     uint64_t flow_hash;
     uint64_t meta_anchor;
     uint64_t seq_or_ctr;
+    uint64_t replay_win;
     uint8_t  state;
     uint8_t  _pad;
 };

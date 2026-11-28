@@ -204,3 +204,5 @@ sudo ./build/zerokull-daemon eth0 --shadow
 - **Kernel NFS2ROOT (`CVE-2026-99362`) & VLAN `VID == 0` (`CVE-2026-99805`) Guard:** Early `XDP_DROP` on `TCP/2049` and `VID == 0` 802.1Q/802.1AD frames in `bpf/xdp_guard.bpf.c` and `src/engine.c`, plus TLS 1.3 `0x17` micro-record flood and padded IPv6 extension header filtering (**ASan + UBSan + `-fanalyzer` + `-Werror`** verified).
 
 - **Cross-Layer 64B HTTP & WireGuard Gate (27 Nov 2026):** Blocks `<64B` cleartext HTTP boundary splits (`2x32B`) and enforces WireGuard `148B -> 92B -> >=64B` (`16B`-aligned) `cli_idx`/`srv_idx` + monotonic 64-bit counter binding.
+
+- **Hardened L7 & WireGuard Anti-Replay (Nov 2026):** Universal HTTP `CRLFCRLF` boundary validation paired with `RFC 6479` 64-packet sliding-window replay protection resilient to wireless jitter.
