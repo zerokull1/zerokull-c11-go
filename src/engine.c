@@ -272,7 +272,7 @@ static inline uint32_t zk_check_cacti_4http2shell_swar(const uint8_t *p, uint32_
     if (lim < 26U) return 0U;
     for (uint32_t i = 0U; i + 25U <= lim; i++) {
         if (rd_le64(p + i) == 0x5f77656976657270ULL &&
-            rd_le64(p + i + 8U) == 0x7265705f73687061ULL &&
+            rd_le64(p + i + 8U) == 0x705f736870617267ULL &&
             rd_le64(p + i + 16U) == 0x3d656761705f7265ULL) {
             uint32_t j = i + 24U;
             uint32_t end = (j + 32U < lim) ? (j + 32U) : lim;

@@ -108,6 +108,35 @@ int main(void) {
         uint32_t tip = 0;
         assert(zk_inspect_packet(&ctx, tls17_micro, sizeof(tls17_micro), &tip) == ZK_VERDICT_DROP);
     }
+
+    /* Regression: Cacti 4HTTP2SHELL 0-day (28.11.2026) */
+    {
+        const char *cacti_atk = "GET /cacti/auth_profile.php?action=update_data&preview_graphs_per_page=1'+OR+1=1-- HTTP/1.1\r\nHost: 10.0.0.1\r\n\r\n";
+        const char *cacti_ok  = "GET /cacti/auth_profile.php?action=update_data&preview_graphs_per_page=30 HTTP/1.1\r\nHost: 10.0.0.1\r\n\r\n";
+        const char *base_hdr =
+            "\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x02\x08\x00"
+            "\x45\x00\x00\x00\x00\x02\x00\x00\x40\x06\x00\x00"
+            "\x0a\x00\x00\x58\x0a\x00\x00\x01"
+            "\xd4\x31\x00\x50\x00\x00\x00\x01\x00\x00\x00\x01\x50\x18\x20\x00\x00\x00\x00\x00";
+        uint8_t *p1 = (uint8_t *)__builtin_alloca(256U);
+        uint8_t *p2 = (uint8_t *)__builtin_alloca(256U);
+        size_t l1 = 54U + strlen(cacti_atk), l2 = 54U + strlen(cacti_ok);
+        memcpy(p1, base_hdr, 54U);
+        *(p1 + 16) = (uint8_t)((l1 - 14U) >> 8);
+        *(p1 + 17) = (uint8_t)((l1 - 14U) & 0xFFU);
+        memcpy(p1 + 54U, cacti_atk, strlen(cacti_atk));
+
+        memcpy(p2, base_hdr, 54U);
+        *(p2 + 29) = 89U;
+        *(p2 + 16) = (uint8_t)((l2 - 14U) >> 8);
+        *(p2 + 17) = (uint8_t)((l2 - 14U) & 0xFFU);
+        memcpy(p2 + 54U, cacti_ok, strlen(cacti_ok));
+
+        uint32_t tip = 0;
+        assert(zk_inspect_packet(&ctx, p1, l1, &tip) == ZK_VERDICT_BAN);
+        assert(zk_inspect_packet(&ctx, p2, l2, &tip) == ZK_VERDICT_PASS);
+    }
+
     printf("[TEST PASS] inspected=%llu drops=%llu bans=%llu\n",
            (unsigned long long)ctx.total_inspected,
            (unsigned long long)ctx.total_drops,
