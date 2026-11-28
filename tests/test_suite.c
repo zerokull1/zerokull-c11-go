@@ -160,6 +160,19 @@ int main(void) {
         assert(zk_inspect_packet(&ctx, tr_pkt, build_tcp(tr_pkt, 0x0D01010AU, 51003, 80, 64, 0x18, (const uint8_t *)m_xxe, strlen(m_xxe)), &sip_tr) == ZK_VERDICT_BAN);
         assert(zk_inspect_packet(&ctx, tr_pkt, build_tcp(tr_pkt, 0x0E01010AU, 51004, 80, 64, 0x18, (const uint8_t *)m_ok, strlen(m_ok)), &sip_tr) == ZK_VERDICT_PASS);
     }
+    {
+        struct zk_engine_ctx bst;
+        zk_engine_init(&bst);
+        uint8_t raw[96] = {0};
+        uint32_t sip = 0;
+        raw[12] = 0x08; raw[13] = 0x00; raw[14] = 0x45; raw[17] = 82;
+        raw[22] = 64; raw[23] = 6; raw[26] = 10; raw[29] = 1; raw[30] = 10; raw[33] = 2;
+        raw[35] = 123; raw[37] = 80; raw[46] = 0x50; raw[47] = 0x18; raw[48] = 0x04;
+        __builtin_memcpy(raw + 54, "GET /api/v1/health HTTP/1.1\r\nHost: ok.local", 42);
+        assert(zk_bare_metal_transit_step(&bst, raw, 96, &sip) == ZK_VERDICT_PASS);
+        __builtin_memcpy(raw + 54, "GET /%252e%252e/etc/passwd HTTP/1.1\r\nHost: x", 42);
+        assert(zk_bare_metal_transit_step(&bst, raw, 96, &sip) == ZK_VERDICT_BAN);
+    }
     printf("[TEST PASS] inspected=%llu drops=%llu bans=%llu\n",
            (unsigned long long)ctx.total_inspected,
            (unsigned long long)ctx.total_drops,

@@ -657,3 +657,12 @@ uint8_t zk_normalize_64b_gate(
     }
     return 0U;
 }
+
+enum zk_verdict zk_bare_metal_transit_step(
+    struct zk_engine_ctx *ctx,
+    const uint8_t *frame,
+    size_t frame_len,
+    uint32_t *out_src_ip_be
+) {
+    return zk_inspect_packet(ctx, frame, frame_len, out_src_ip_be);
+}
