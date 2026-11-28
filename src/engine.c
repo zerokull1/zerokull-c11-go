@@ -170,6 +170,7 @@ static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, 
                 size_t body_lim = (l7_len - 8U < 1024U) ? (l7_len - 8U) : 1024U;
                 for (size_t b = uri_start; b <= body_lim; b++) {
                     if (rd_le32(l7 + b) == 0x0A0D0A0DU && b + 8U <= l7_len) {
+                        if (has_te != 0U) { size_t clim = (l7_len < b + 68U) ? l7_len : (b + 68U); for (size_t c = b + 4U; c < clim; c++) { uint8_t ch = *(l7 + c); if (ch == ';') return ZK_VERDICT_BAN; if (ch == '\r') break; if (!((ch >= '0' && ch <= '9') || ((ch | 0x20U) >= 'a' && (ch | 0x20U) <= 'f'))) return ZK_VERDICT_BAN; } }
                         uint32_t sig = rd_le32(l7 + b + 4U);
                         if (sig == 0x6D783F3CU || sig == 0x4F44213CU || sig == 0x41304F72U || sig == 0x0500EDACU) return ZK_VERDICT_BAN;
                         break;
