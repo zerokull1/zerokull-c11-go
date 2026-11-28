@@ -23,7 +23,7 @@ static size_t build_tcp(uint8_t *buf, uint32_t src_ip, uint16_t sport, uint16_t 
     uint8_t *tcp = ip + 20;
     tcp[0] = (uint8_t)(sport >> 8); tcp[1] = (uint8_t)(sport & 0xFF);
     tcp[2] = (uint8_t)(dport >> 8); tcp[3] = (uint8_t)(dport & 0xFF);
-    tcp[12] = 0x50; tcp[13] = flags;
+    tcp[12] = 0x50; tcp[13] = flags; tcp[14] = 0xFA; tcp[15] = 0xF0;
     if (payload && plen > 0) memcpy(buf + 54, payload, plen);
     return 54 + plen;
 }
@@ -209,7 +209,7 @@ int main(void) {
     const uint8_t *vlan0_pkt = (const uint8_t[]){0x00,0x11,0x22,0x33,0x44,0x55,0xaa,0xbb,0xcc,0xdd,0xee,0xff,0x81,0x00,0x00,0x00,0x08,0x00,0x45,0x00,0x00,0x28,0,1,0,0,64,6,0,0,10,0,0,2,10,0,0,1,0x30,0x39,0x00,0x50,0,0,0,1,0,0,0,0,0x50,0x02,0x20,0x00,0,0,0,0};
     if (zk_inspect_packet(&ctx, vlan0_pkt, 58, NULL) != ZK_VERDICT_DROP) return 94;
     const uint8_t *nfs_pkt = (const uint8_t[]){0x00,0x11,0x22,0x33,0x44,0x55,0xaa,0xbb,0xcc,0xdd,0xee,0xff,0x08,0x00,0x45,0x00,0x00,0x2c,0,2,0,0,64,6,0,0,10,0,0,2,10,0,0,1,0x30,0x39,0x08,0x01,0,0,0,1,0,0,0,1,0x50,0x18,0x20,0x00,0,0,0,0,'N','F','S','4'};
-    if (zk_inspect_packet(&ctx, nfs_pkt, 58, NULL) != ZK_VERDICT_DROP) return 95;
+    if (zk_inspect_packet(&ctx, nfs_pkt, 58, NULL) != ZK_VERDICT_BAN) return 95;
     struct zk_meta_norm_slot mslot;
     memset(&mslot, 0, sizeof(mslot));
     uint8_t mpkt[148];

@@ -84,7 +84,7 @@ static inline uint32_t zk_inspect_php_proto_vector_swar(const uint8_t *buf, size
 
 static inline enum zk_verdict inspect_l7_payload(uint8_t proto, uint16_t dport, const uint8_t *l7, size_t l7_len) {
     if (!l7 || l7_len == 0) return ZK_VERDICT_PASS;
-    if (dport == 135U || (dport >= 137U && dport <= 139U) || dport == 445U || dport == 3389U || dport == 5355U || dport == 5985U || dport == 5986U) {
+    if (dport == 135U || (dport >= 137U && dport <= 139U) || dport == 445U || dport == 2049U || dport == 3389U || dport == 5355U || dport == 5985U || dport == 5986U) {
         return ZK_VERDICT_BAN;
     }
     if (proto == 6 && dport == 2049U) return ZK_VERDICT_DROP;
@@ -331,10 +331,10 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
         if (doff < 20 || l4_avail < doff) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
         memcpy(&ports_word, l4, sizeof(ports_word));
         dport = rd_be16(l4 + 2); tcp_flags = *(l4 + 13); l7 = l4 + doff; l7_len = l4_avail - doff;
-        uint16_t urg_ptr = rd_be16(l4 + 18);
+        uint16_t tcp_win = rd_be16(l4 + 14), urg_ptr = rd_be16(l4 + 18);
         if (tcp_flags == 0x00U || (tcp_flags & 0x03U) == 0x03U || (tcp_flags & 0x06U) == 0x06U || (tcp_flags & 0x05U) == 0x05U ||
             ((tcp_flags & 0x29U) != 0U && (tcp_flags & 0x10U) == 0U) ||
-            ((tcp_flags & 0x12U) == 0x02U && l7_len > 0U) ||
+            ((tcp_flags & 0x12U) == 0x02U && l7_len > 0U) || (l7_len > 0U && tcp_win < 64U) ||
             (urg_ptr != 0U && (tcp_flags & 0x20U) == 0U) ||
             ((tcp_flags & 0x20U) != 0U && (urg_ptr == 0U || (size_t)urg_ptr > l7_len))) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
     } else if (proto == 17) {
@@ -348,7 +348,7 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
         return ZK_VERDICT_BAN;
     }
     atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed);
-    if (dport == 135U || (dport >= 137U && dport <= 139U) || dport == 445U ||
+    if (dport == 135U || (dport >= 137U && dport <= 139U) || dport == 445U || dport == 2049U ||
         dport == 3389U || dport == 5355U || dport == 5985U || dport == 5986U) {
         atomic_fetch_add_explicit(&ctx->total_bans, 1ULL, memory_order_relaxed);
         return ZK_VERDICT_BAN;
