@@ -137,6 +137,16 @@ int main(void) {
         assert(zk_inspect_packet(&ctx, p2, l2, &tip) == ZK_VERDICT_PASS);
     }
 
+        /* Regression: CDN/Cloudflare TCP Window Scaling (sport=443, raw win=32 -> PASS, FP=0) */
+    {
+        uint32_t sip_cf = 0;
+        uint8_t cf_pkt[256] = {0};
+        uint8_t cf_tls[64] = {0x16, 0x03, 0x03, 0x00, 0x3B, 0x02};
+        assert(zk_inspect_packet(&ctx, cf_pkt, build_tcp(cf_pkt, 0x1A171468U, 443, 49153, 64, 0x12, NULL, 0), &sip_cf) == ZK_VERDICT_PASS);
+        size_t cf_len = build_tcp(cf_pkt, 0x1A171468U, 443, 49153, 64, 0x18, cf_tls, 64);
+        cf_pkt[48] = 0x00; cf_pkt[49] = 0x20; /* raw tcp_win = 32 (scaled window) */
+        assert(zk_inspect_packet(&ctx, cf_pkt, cf_len, &sip_cf) == ZK_VERDICT_PASS);
+    }
     printf("[TEST PASS] inspected=%llu drops=%llu bans=%llu\n",
            (unsigned long long)ctx.total_inspected,
            (unsigned long long)ctx.total_drops,

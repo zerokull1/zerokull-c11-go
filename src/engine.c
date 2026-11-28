@@ -357,7 +357,7 @@ enum zk_verdict zk_inspect_packet(struct zk_engine_ctx *ctx, const uint8_t *pkt,
         uint16_t tcp_win = rd_be16(l4 + 14), urg_ptr = rd_be16(l4 + 18);
         if (tcp_flags == 0x00U || (tcp_flags & 0x03U) == 0x03U || (tcp_flags & 0x06U) == 0x06U || (tcp_flags & 0x05U) == 0x05U ||
             ((tcp_flags & 0x29U) != 0U && (tcp_flags & 0x10U) == 0U) ||
-            ((tcp_flags & 0x12U) == 0x02U && l7_len > 0U) || (l7_len > 0U && tcp_win < 64U) ||
+            ((tcp_flags & 0x12U) == 0x02U && l7_len > 0U) || (rd_be16(l4) != 443U && l7_len > 0U && tcp_win < 16U) ||
             (urg_ptr != 0U && (tcp_flags & 0x20U) == 0U) ||
             ((tcp_flags & 0x20U) != 0U && (urg_ptr == 0U || (size_t)urg_ptr > l7_len))) { atomic_fetch_add_explicit(&ctx->total_inspected, 1ULL, memory_order_relaxed); atomic_fetch_add_explicit(&ctx->total_drops, 1ULL, memory_order_relaxed); return ZK_VERDICT_DROP; }
     } else if (proto == 17) {
